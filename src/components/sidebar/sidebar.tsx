@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -33,6 +33,16 @@ export async function Sidebar() {
           )}
         </div>
       </ScrollArea>
+      <Separator />
+      <div className="p-2">
+        <Link
+          href="/settings"
+          className="flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
+        >
+          <Settings className="h-4 w-4" />
+          Settings
+        </Link>
+      </div>
     </aside>
   );
 }
