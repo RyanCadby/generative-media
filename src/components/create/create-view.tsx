@@ -1,16 +1,20 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { ImagePlus } from "lucide-react";
-import { MessageList } from "./message-list";
-import { ChatInput } from "./chat-input";
-import { cn } from "@/lib/utils";
+import { GenerationFeed } from "./generation-feed";
+import { GenerationInput } from "./generation-input";
 import type { GenerationType, ProviderName } from "@/lib/providers/types";
 
-export interface ChatMessage {
+export interface Generation {
   id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
+  prompt: string;
+  provider: ProviderName;
+  generationType: GenerationType;
+  model: string;
+  referenceImagePath: string | null;
+  referenceImageMimeType: string | null;
+  metadata: Record<string, unknown> | null;
   createdAt: Date;
   mediaAssets: {
     id: string;
@@ -18,6 +22,8 @@ export interface ChatMessage {
     filePath: string;
     mimeType: string;
     prompt: string;
+    width: number | null;
+    height: number | null;
   }[];
   generationJobs: {
     id: string;
@@ -44,9 +50,9 @@ export interface ReuseSettings {
   referenceImageMimeType?: string;
 }
 
-interface ChatViewProps {
-  chatId: string | null;
-  messages: ChatMessage[];
+interface CreateViewProps {
+  projectId: string | null;
+  generations: Generation[];
 }
 
 function processFile(file: File): Promise<UploadedImage> {
@@ -62,19 +68,23 @@ function processFile(file: File): Promise<UploadedImage> {
   });
 }
 
-export function ChatView({ chatId, messages: initialMessages }: ChatViewProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+export function CreateView({ projectId, generations: initialGenerations }: CreateViewProps) {
+  const [generations, setGenerations] = useState<Generation[]>(initialGenerations);
   const [isLoading, setIsLoading] = useState(false);
-  const [uploadedImage, setUploadedImage] = useState<UploadedImage | null>(
-    null
-  );
+  const [uploadedImage, setUploadedImage] = useState<UploadedImage | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
   const [reuseSettings, setReuseSettings] = useState<ReuseSettings | null>(null);
+  const [promptToLoad, setPromptToLoad] = useState<string | null>(null);
+  const [jobProgress, setJobProgress] = useState<Record<string, number>>({});
 
-  const handleNewMessage = (newMessages: ChatMessage[]) => {
-    setMessages(newMessages);
+  const handleNewGenerations = (newGenerations: Generation[]) => {
+    setGenerations(newGenerations);
   };
+
+  const handleJobProgress = useCallback((jobId: string, progress: number) => {
+    setJobProgress((prev) => ({ ...prev, [jobId]: progress }));
+  }, []);
 
   const handleFileDrop = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) return;
@@ -82,33 +92,27 @@ export function ChatView({ chatId, messages: initialMessages }: ChatViewProps) {
     setUploadedImage(image);
   }, []);
 
-  const onDragEnter = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setDragCounter((c) => c + 1);
-      if (e.dataTransfer.types.includes("Files")) {
-        setIsDragging(true);
-      }
-    },
-    []
-  );
+  const onDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter((c) => c + 1);
+    if (e.dataTransfer.types.includes("Files")) {
+      setIsDragging(true);
+    }
+  }, []);
 
-  const onDragLeave = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setDragCounter((c) => {
-        const next = c - 1;
-        if (next <= 0) {
-          setIsDragging(false);
-          return 0;
-        }
-        return next;
-      });
-    },
-    []
-  );
+  const onDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter((c) => {
+      const next = c - 1;
+      if (next <= 0) {
+        setIsDragging(false);
+        return 0;
+      }
+      return next;
+    });
+  }, []);
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -151,13 +155,30 @@ export function ChatView({ chatId, messages: initialMessages }: ChatViewProps) {
         </div>
       )}
 
-      {messages.length === 0 ? (
+      {/* Input at top */}
+      <GenerationInput
+        projectId={projectId}
+        generations={generations}
+        onGenerationsUpdate={handleNewGenerations}
+        isLoading={isLoading}
+        setIsLoading={setIsLoading}
+        uploadedImage={uploadedImage}
+        onUploadedImageChange={setUploadedImage}
+        reuseSettings={reuseSettings}
+        onReuseSettingsConsumed={() => setReuseSettings(null)}
+        promptToLoad={promptToLoad}
+        onPromptToLoadConsumed={() => setPromptToLoad(null)}
+        onJobProgress={handleJobProgress}
+      />
+
+      {/* Generation feed */}
+      {generations.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4 max-w-md px-4">
             <h1 className="text-2xl font-semibold">Generative Media</h1>
             <p className="text-muted-foreground">
               Generate images and videos using AI. Choose a model and
-              generation type below to get started.
+              generation type above to get started.
             </p>
             <p className="text-sm text-muted-foreground">
               Drag and drop an image anywhere to use as reference.
@@ -165,19 +186,8 @@ export function ChatView({ chatId, messages: initialMessages }: ChatViewProps) {
           </div>
         </div>
       ) : (
-        <MessageList messages={messages} onReuse={setReuseSettings} />
+        <GenerationFeed generations={generations} onReuse={setReuseSettings} onUsePrompt={setPromptToLoad} jobProgress={jobProgress} />
       )}
-      <ChatInput
-        chatId={chatId}
-        messages={messages}
-        onMessagesUpdate={handleNewMessage}
-        isLoading={isLoading}
-        setIsLoading={setIsLoading}
-        uploadedImage={uploadedImage}
-        onUploadedImageChange={setUploadedImage}
-        reuseSettings={reuseSettings}
-        onReuseSettingsConsumed={() => setReuseSettings(null)}
-      />
     </div>
   );
 }

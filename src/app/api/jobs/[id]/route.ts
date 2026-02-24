@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { generationJobs, messages, mediaAssets } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { generationJobs, generations, mediaAssets } from "@/lib/db/schema";
+import { eq, and, ne } from "drizzle-orm";
 import { getProvider } from "@/lib/providers";
 import type { ProviderName } from "@/lib/providers";
 import { saveMedia } from "@/lib/media-storage";
+import { getImageDimensions } from "@/lib/image-dimensions";
 import { v4 as uuidv4 } from "uuid";
 
 export async function GET(
@@ -16,7 +17,7 @@ export async function GET(
   const job = await db.query.generationJobs.findFirst({
     where: eq(generationJobs.id, id),
     with: {
-      message: true,
+      generation: true,
     },
   });
 
@@ -31,18 +32,14 @@ export async function GET(
     });
   }
 
-  // Auto-fail jobs stuck for more than 10 minutes
-  const jobAgeMs = Date.now() - new Date(job.updatedAt).getTime();
-  if (jobAgeMs > 10 * 60 * 1000) {
-    const timeoutError = "Generation timed out";
+  // Auto-fail jobs that haven't had a successful provider check in 30 minutes
+  const staleSinceMs = Date.now() - new Date(job.updatedAt).getTime();
+  if (staleSinceMs > 30 * 60 * 1000) {
+    const timeoutError = "Generation timed out — no progress for 30 minutes";
     await db
       .update(generationJobs)
       .set({ status: "failed", error: timeoutError, updatedAt: new Date() })
       .where(eq(generationJobs.id, id));
-    await db
-      .update(messages)
-      .set({ content: `Error: ${timeoutError}` })
-      .where(eq(messages.id, job.messageId));
     return NextResponse.json({ status: "failed", error: timeoutError });
   }
 
@@ -55,23 +52,37 @@ export async function GET(
     const result = await provider.checkVideoJob(job.providerJobId);
 
     if (result.status === "completed" && result.videoBuffer) {
+      // Atomically claim this completion to prevent duplicate processing
+      const claimed = await db
+        .update(generationJobs)
+        .set({ status: "completed", updatedAt: new Date() })
+        .where(and(eq(generationJobs.id, id), ne(generationJobs.status, "completed")))
+        .returning({ id: generationJobs.id });
+
+      if (claimed.length === 0) {
+        // Another request already handled this
+        return NextResponse.json({ status: "completed" });
+      }
+
       const assetId = uuidv4();
-      const mimeType = result.mimeType ?? "video/mp4";
+      const isUpscale = job.generationType === "image-upscale";
+      const assetType = isUpscale ? "image" : "video";
+      const defaultMimeType = isUpscale ? "image/png" : "video/mp4";
+      const mimeType = result.mimeType ?? defaultMimeType;
 
-      // Get chat ID from the message
-      const message = await db.query.messages.findFirst({
-        where: eq(messages.id, job.messageId),
-      });
-
-      if (!message) {
+      const generation = job.generation;
+      if (!generation) {
         return NextResponse.json(
-          { error: "Message not found" },
+          { error: "Generation not found" },
           { status: 404 }
         );
       }
 
+      // Extract dimensions for image assets
+      const dims = assetType === "image" ? getImageDimensions(result.videoBuffer) : null;
+
       const filePath = await saveMedia(
-        message.chatId,
+        generation.projectId,
         assetId,
         result.videoBuffer,
         mimeType
@@ -79,25 +90,17 @@ export async function GET(
 
       await db.insert(mediaAssets).values({
         id: assetId,
-        messageId: job.messageId,
-        chatId: message.chatId,
-        type: "video",
+        generationId: generation.id,
+        projectId: generation.projectId,
+        type: assetType,
         provider: job.provider,
-        model: job.model ?? (job.provider === "gemini" ? "veo-2.0-generate-001" : "sora-2"),
-        prompt: message.content,
+        model: job.model ?? (job.provider === "topaz" ? "Standard V2" : job.provider === "gemini" ? "veo-2.0-generate-001" : "sora-2"),
+        prompt: generation.prompt,
         filePath,
         mimeType,
+        width: dims?.width ?? null,
+        height: dims?.height ?? null,
       });
-
-      await db
-        .update(messages)
-        .set({ content: "Generated video:" })
-        .where(eq(messages.id, job.messageId));
-
-      await db
-        .update(generationJobs)
-        .set({ status: "completed", updatedAt: new Date() })
-        .where(eq(generationJobs.id, id));
 
       return NextResponse.json({ status: "completed" });
     }
@@ -112,18 +115,22 @@ export async function GET(
         })
         .where(eq(generationJobs.id, id));
 
-      await db
-        .update(messages)
-        .set({ content: `Error: ${result.error}` })
-        .where(eq(messages.id, job.messageId));
-
       return NextResponse.json({
         status: "failed",
         error: result.error,
       });
     }
 
-    return NextResponse.json({ status: "processing" });
+    // Provider confirmed still processing — refresh updatedAt so the timeout resets
+    await db
+      .update(generationJobs)
+      .set({ updatedAt: new Date() })
+      .where(eq(generationJobs.id, id));
+
+    return NextResponse.json({
+      status: "processing",
+      ...(result.progress != null && { progress: result.progress }),
+    });
   } catch (error) {
     const errorMsg =
       error instanceof Error ? error.message : "Failed to check job status";

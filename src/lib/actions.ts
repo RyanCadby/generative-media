@@ -2,28 +2,29 @@
 
 import { db } from "@/lib/db";
 import {
-  chats,
-  messages,
+  projects,
+  generations,
   mediaAssets,
   generationJobs,
 } from "@/lib/db/schema";
-import { eq, desc, asc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getProvider } from "@/lib/providers";
 import type { ProviderName, GenerationType } from "@/lib/providers";
 import { saveMedia } from "@/lib/media-storage";
+import { getImageDimensions } from "@/lib/image-dimensions";
 import { readFile, unlink } from "fs/promises";
 
-export async function createChat() {
-  const [chat] = await db.insert(chats).values({}).returning();
-  redirect(`/chat/${chat.id}`);
+export async function createProject() {
+  const [project] = await db.insert(projects).values({}).returning();
+  redirect(`/create/${project.id}`);
 }
 
-export async function getChatList() {
-  return db.query.chats.findMany({
-    orderBy: desc(chats.updatedAt),
+export async function getProjectList() {
+  return db.query.projects.findMany({
+    orderBy: desc(projects.updatedAt),
     columns: {
       id: true,
       title: true,
@@ -32,12 +33,12 @@ export async function getChatList() {
   });
 }
 
-export async function getChat(chatId: string) {
-  const chat = await db.query.chats.findFirst({
-    where: eq(chats.id, chatId),
+export async function getProject(projectId: string) {
+  const project = await db.query.projects.findFirst({
+    where: eq(projects.id, projectId),
     with: {
-      messages: {
-        orderBy: asc(messages.createdAt),
+      generations: {
+        orderBy: desc(generations.createdAt),
         with: {
           mediaAssets: true,
           generationJobs: {
@@ -55,136 +56,131 @@ export async function getChat(chatId: string) {
     },
   });
 
-  return chat;
+  return project;
 }
 
-export async function deleteChat(chatId: string) {
-  await db.delete(chats).where(eq(chats.id, chatId));
+export async function renameProject(projectId: string, title: string) {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+  await db
+    .update(projects)
+    .set({ title: trimmed, updatedAt: new Date() })
+    .where(eq(projects.id, projectId));
   revalidatePath("/");
-  redirect("/chat/new");
 }
 
-export async function sendMessage(
-  chatId: string,
+export async function deleteProject(projectId: string) {
+  await db.delete(projects).where(eq(projects.id, projectId));
+  revalidatePath("/");
+  redirect("/create/new");
+}
+
+export async function submitGeneration(
+  projectId: string,
   content: string,
   provider: ProviderName,
   generationType: GenerationType,
   modelId: string,
   uploadFilePath?: string,
-  uploadMimeType?: string
+  uploadMimeType?: string,
+  scaleFactor?: number,
+  upscaleParams?: Record<string, unknown>,
+  aspectRatio?: string
 ) {
   const providerInstance = getProvider(provider);
 
-  // Read uploaded image from disk if provided (avoids passing large base64 through React serialization)
+  // Read uploaded image from disk if provided
   let imageBase64: string | undefined;
   let imageMimeType: string | undefined;
   if (uploadFilePath && uploadMimeType) {
     const fileBuffer = await readFile(uploadFilePath);
     imageBase64 = fileBuffer.toString("base64");
     imageMimeType = uploadMimeType;
-    // Clean up the temp file
     await unlink(uploadFilePath).catch(() => {});
   }
 
-  // Insert user message
-  const [userMessage] = await db
-    .insert(messages)
-    .values({
-      chatId,
-      role: "user",
-      content,
-    })
-    .returning();
-
-  // Save the uploaded reference image as a media asset on the user message
+  // Save the reference image to R2 if present
   let refImageUrl: string | undefined;
   if (imageBase64 && imageMimeType) {
     const refAssetId = uuidv4();
     const refBuffer = Buffer.from(imageBase64, "base64");
-    refImageUrl = await saveMedia(chatId, refAssetId, refBuffer, imageMimeType);
-    await db.insert(mediaAssets).values({
-      id: refAssetId,
-      messageId: userMessage.id,
-      chatId,
-      type: "image",
-      provider,
-      model: modelId,
-      prompt: "Reference image",
-      filePath: refImageUrl,
-      mimeType: imageMimeType,
-    });
+    refImageUrl = await saveMedia(projectId, refAssetId, refBuffer, imageMimeType);
   }
 
-  // Insert assistant placeholder message
-  const assistantMessageId = uuidv4();
-  const [assistantMessage] = await db
-    .insert(messages)
-    .values({
-      id: assistantMessageId,
-      chatId,
-      role: "assistant",
-      content: "",
-    })
-    .returning();
+  // Build metadata for the generation
+  const metadata: Record<string, unknown> = {};
+  if (scaleFactor !== undefined) metadata.scaleFactor = scaleFactor;
+  if (upscaleParams && Object.keys(upscaleParams).length > 0) {
+    Object.assign(metadata, upscaleParams);
+  }
+
+  // Insert the generation row
+  const generationId = uuidv4();
+  await db.insert(generations).values({
+    id: generationId,
+    projectId,
+    prompt: content,
+    provider,
+    generationType,
+    model: modelId,
+    referenceImagePath: refImageUrl ?? null,
+    referenceImageMimeType: imageMimeType ?? null,
+    metadata: Object.keys(metadata).length > 0 ? metadata : null,
+  });
 
   // Insert generation job
   const jobId = uuidv4();
   await db.insert(generationJobs).values({
     id: jobId,
-    messageId: assistantMessage.id,
+    generationId,
     provider,
     generationType,
     model: modelId,
     status: "processing",
   });
 
-  // Update chat title on first message
-  const chatData = await db.query.chats.findFirst({
-    where: eq(chats.id, chatId),
-    with: { messages: { limit: 3 } },
+  // Update project title on first generation
+  const projectData = await db.query.projects.findFirst({
+    where: eq(projects.id, projectId),
+    with: { generations: { limit: 2 } },
   });
-  if (chatData && chatData.messages.length <= 2) {
+  if (projectData && projectData.generations.length <= 1) {
+    const titleText = content.trim() || `${generationType} - ${modelId}`;
     const title =
-      content.length > 50 ? content.substring(0, 50) + "..." : content;
-    await db.update(chats).set({ title, updatedAt: new Date() }).where(eq(chats.id, chatId));
+      titleText.length > 50 ? titleText.substring(0, 50) + "..." : titleText;
+    await db.update(projects).set({ title, updatedAt: new Date() }).where(eq(projects.id, projectId));
   } else {
-    await db.update(chats).set({ updatedAt: new Date() }).where(eq(chats.id, chatId));
+    await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, projectId));
   }
 
   try {
     if (generationType === "text-to-image") {
       const result = await providerInstance.generateImage(content, { modelId });
 
-      // Save image to filesystem
       const assetId = uuidv4();
       const buffer = Buffer.from(result.base64, "base64");
+      const dims = getImageDimensions(buffer);
       const filePath = await saveMedia(
-        chatId,
+        projectId,
         assetId,
         buffer,
         result.mimeType
       );
 
-      // Create media asset record
       await db.insert(mediaAssets).values({
         id: assetId,
-        messageId: assistantMessage.id,
-        chatId,
+        generationId,
+        projectId,
         type: "image",
         provider,
         model: modelId,
         prompt: content,
         filePath,
         mimeType: result.mimeType,
+        width: dims?.width ?? null,
+        height: dims?.height ?? null,
       });
 
-      // Update assistant message
-      await db
-        .update(messages)
-        .set({ content: "Generated image:" })
-        .where(eq(messages.id, assistantMessage.id));
-
-      // Mark job as completed
       await db
         .update(generationJobs)
         .set({ status: "completed", updatedAt: new Date() })
@@ -200,13 +196,12 @@ export async function sendMessage(
           imageBase64,
           imageMimeType,
           content,
-          { modelId, imageUrl: refImageUrl }
+          { modelId, imageUrl: refImageUrl, aspectRatio }
         );
       } else {
-        videoJob = await providerInstance.generateVideo(content, { modelId });
+        videoJob = await providerInstance.generateVideo(content, { modelId, aspectRatio });
       }
 
-      // Update job with provider job ID for polling
       await db
         .update(generationJobs)
         .set({
@@ -214,12 +209,27 @@ export async function sendMessage(
           updatedAt: new Date(),
         })
         .where(eq(generationJobs.id, jobId));
+    } else if (generationType === "image-upscale") {
+      if (!imageBase64 || !imageMimeType) {
+        throw new Error("Image required for upscaling");
+      }
+      if (!providerInstance.upscaleImage) {
+        throw new Error(`Provider ${provider} does not support image upscaling`);
+      }
 
-      // Update assistant message
+      const upscaleResult = await providerInstance.upscaleImage(
+        imageBase64,
+        imageMimeType,
+        { modelId, scaleFactor, prompt: content || undefined, ...upscaleParams }
+      );
+
       await db
-        .update(messages)
-        .set({ content: "Generating video..." })
-        .where(eq(messages.id, assistantMessage.id));
+        .update(generationJobs)
+        .set({
+          providerJobId: upscaleResult.jobId,
+          updatedAt: new Date(),
+        })
+        .where(eq(generationJobs.id, jobId));
     }
   } catch (error) {
     const errorMsg =
@@ -229,13 +239,8 @@ export async function sendMessage(
       .update(generationJobs)
       .set({ status: "failed", error: errorMsg, updatedAt: new Date() })
       .where(eq(generationJobs.id, jobId));
-
-    await db
-      .update(messages)
-      .set({ content: `Error: ${errorMsg}` })
-      .where(eq(messages.id, assistantMessage.id));
   }
 
-  revalidatePath(`/chat/${chatId}`);
-  return { chatId, jobId };
+  revalidatePath(`/create/${projectId}`);
+  return { projectId, jobId };
 }

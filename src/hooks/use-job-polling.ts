@@ -1,44 +1,68 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useEffect } from "react";
 
 const POLL_INTERVAL = 5000;
 
+export interface JobProgress {
+  jobId: string;
+  progress: number | null;
+}
+
 export function useJobPolling(
-  onComplete: (chatId: string) => Promise<void>
+  onComplete: (projectId: string) => Promise<void>,
+  onProgress?: (jobProgress: JobProgress) => void
 ) {
-  const pollIntervals = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const activePolls = useRef<Set<string>>(new Set());
+
+  // Keep latest callbacks in refs so poll closures never go stale
+  const onCompleteRef = useRef(onComplete);
+  const onProgressRef = useRef(onProgress);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+    onProgressRef.current = onProgress;
+  });
 
   const stopPolling = useCallback((jobId: string) => {
-    const interval = pollIntervals.current.get(jobId);
-    if (interval) {
-      clearInterval(interval);
-      pollIntervals.current.delete(jobId);
-    }
+    activePolls.current.delete(jobId);
   }, []);
 
   const startPolling = useCallback(
-    (jobId: string, chatId: string) => {
-      // Don't duplicate
-      if (pollIntervals.current.has(jobId)) return;
+    (jobId: string, projectId: string) => {
+      if (activePolls.current.has(jobId)) return;
+      activePolls.current.add(jobId);
 
-      const interval = setInterval(async () => {
+      const poll = async () => {
+        // Stop if polling was cancelled
+        if (!activePolls.current.has(jobId)) return;
+
         try {
           const response = await fetch(`/api/jobs/${jobId}`);
           const data = await response.json();
 
+          if (data.progress != null) {
+            onProgressRef.current?.({ jobId, progress: data.progress });
+          }
+
           if (data.status === "completed" || data.status === "failed") {
-            stopPolling(jobId);
-            await onComplete(chatId);
+            activePolls.current.delete(jobId);
+            await onCompleteRef.current(projectId);
+            return;
           }
         } catch (error) {
           console.error("Job polling error:", error);
         }
-      }, POLL_INTERVAL);
 
-      pollIntervals.current.set(jobId, interval);
+        // Schedule next poll only after this one finishes
+        if (activePolls.current.has(jobId)) {
+          setTimeout(poll, POLL_INTERVAL);
+        }
+      };
+
+      // Start first poll after a delay
+      setTimeout(poll, POLL_INTERVAL);
     },
-    [onComplete, stopPolling]
+    []
   );
 
   return { startPolling, stopPolling };

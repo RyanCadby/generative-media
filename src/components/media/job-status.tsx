@@ -1,24 +1,25 @@
 "use client";
 
 import { Loader2, AlertCircle } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 
 interface JobStatusProps {
   job: {
     id: string;
     status: "pending" | "processing" | "completed" | "failed";
-    generationType: "text-to-image" | "text-to-video" | "image-to-video";
+    generationType: "text-to-image" | "text-to-video" | "image-to-video" | "image-upscale";
     error: string | null;
   };
+  progress?: number;
 }
 
 const typeLabels: Record<string, string> = {
   "text-to-image": "Image",
   "text-to-video": "Video",
   "image-to-video": "Video",
+  "image-upscale": "Image",
 };
 
-export function JobStatus({ job }: JobStatusProps) {
+export function JobStatus({ job, progress }: JobStatusProps) {
   if (job.status === "completed") return null;
 
   if (job.status === "failed") {
@@ -34,11 +35,9 @@ export function JobStatus({ job }: JobStatusProps) {
     <div className="flex items-center gap-2">
       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
       <span className="text-sm text-muted-foreground">
-        Generating {typeLabels[job.generationType] ?? "media"}...
+        Generating {typeLabels[job.generationType] ?? "media"}
+        {progress != null ? ` — ${Math.round(progress)}%` : "..."}
       </span>
-      <Badge variant="secondary" className="text-xs">
-        {job.status}
-      </Badge>
     </div>
   );
 }

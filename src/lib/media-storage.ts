@@ -23,13 +23,13 @@ function getExtFromMimeType(mimeType: string): string {
 }
 
 export async function saveMedia(
-  chatId: string,
+  projectId: string,
   assetId: string,
   data: Buffer,
   mimeType: string
 ): Promise<string> {
   const ext = getExtFromMimeType(mimeType);
-  const key = `media/${chatId}/${assetId}.${ext}`;
+  const key = `media/${projectId}/${assetId}.${ext}`;
 
   const client = getR2Client();
   await client.send(
@@ -45,10 +45,10 @@ export async function saveMedia(
 }
 
 export function getMediaUrl(
-  chatId: string,
+  projectId: string,
   assetId: string,
   mimeType: string
 ): string {
   const ext = getExtFromMimeType(mimeType);
-  return `${process.env.R2_PUBLIC_URL}/media/${chatId}/${assetId}.${ext}`;
+  return `${process.env.R2_PUBLIC_URL}/media/${projectId}/${assetId}.${ext}`;
 }

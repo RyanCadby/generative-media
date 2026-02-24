@@ -22,7 +22,25 @@ interface TogetherVideoResponse {
   error?: { code: string; message: string };
 }
 
-function mapDimensions(aspectRatio?: string): { width: number; height: number } {
+function isKlingModel(modelId?: string): boolean {
+  return !!modelId && modelId.toLowerCase().includes("kling");
+}
+
+function mapDimensions(
+  aspectRatio?: string,
+  modelId?: string
+): { width: number; height: number } {
+  if (isKlingModel(modelId)) {
+    switch (aspectRatio) {
+      case "9:16":
+        return { width: 1080, height: 1920 };
+      case "1:1":
+        return { width: 1080, height: 1080 };
+      default:
+        return { width: 1920, height: 1080 };
+    }
+  }
+
   switch (aspectRatio) {
     case "9:16":
       return { width: 768, height: 1366 };
@@ -47,7 +65,7 @@ export const togetherProvider: GenerationProvider = {
     prompt: string,
     options?: VideoGenerationOptions
   ): Promise<VideoJobResult> {
-    const { width, height } = mapDimensions(options?.aspectRatio);
+    const { width, height } = mapDimensions(options?.aspectRatio, options?.modelId);
 
     const res = await fetch(`${BASE_URL}/videos`, {
       method: "POST",
@@ -79,7 +97,7 @@ export const togetherProvider: GenerationProvider = {
     prompt: string,
     options?: VideoGenerationOptions
   ): Promise<VideoJobResult> {
-    const { width, height } = mapDimensions(options?.aspectRatio);
+    const { width, height } = mapDimensions(options?.aspectRatio, options?.modelId);
 
     // Together API requires input_image as a publicly accessible URL
     const imageUrl =

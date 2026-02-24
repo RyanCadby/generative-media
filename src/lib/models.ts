@@ -6,6 +6,9 @@ export interface ModelDefinition {
   provider: ProviderName;
   generationType: GenerationType;
   description: string;
+  detailedDescription?: string;
+  bestFor?: string;
+  category?: string;
 }
 
 export const IMAGE_MODELS: ModelDefinition[] = [
@@ -162,10 +165,115 @@ export const IMAGE_TO_VIDEO_MODELS: ModelDefinition[] = [
   },
 ];
 
+export const UPSCALE_MODELS: ModelDefinition[] = [
+  // Enhance (Standard) models
+  {
+    id: "Standard V2",
+    name: "Standard V2",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "General-purpose enhancement",
+    detailedDescription:
+      "Balances detail, sharpness, and noise reduction across a wide range of image types. The best starting point for most images.",
+    bestFor: "Most images — photos, screenshots, mixed content",
+    category: "Enhance",
+  },
+  {
+    id: "High Fidelity V2",
+    name: "High Fidelity V2",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "Professional photography detail",
+    detailedDescription:
+      "Preserves intricate details in already-sharp professional photography. Ideal when you need pixel-perfect upscaling without artifacts.",
+    bestFor: "High-quality photos, professional photography",
+    category: "Enhance",
+  },
+  {
+    id: "Low Resolution V2",
+    name: "Low Resolution V2",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "Web graphics and screenshots",
+    detailedDescription:
+      "Enhances clarity and detail in low-resolution images like web graphics, screenshots, and compressed digital assets.",
+    bestFor: "Web images, screenshots, compressed JPEGs",
+    category: "Enhance",
+  },
+  {
+    id: "CGI",
+    name: "CGI",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "Digital art and 3D renders",
+    detailedDescription:
+      "Optimized for CGI and digital illustrations, enhancing texture and detail in computer-generated images without introducing unwanted artifacts.",
+    bestFor: "3D renders, digital art, AI-generated images",
+    category: "Enhance",
+  },
+  {
+    id: "Text Refine",
+    name: "Text Refine",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "Text and shape clarity",
+    detailedDescription:
+      "Designed for images with text and shapes, enhancing clarity and sharpness of typographic and geometric elements.",
+    bestFor: "Documents, signage, logos, UI screenshots",
+    category: "Enhance",
+  },
+  // Enhance Generative models
+  {
+    id: "Standard MAX",
+    name: "Standard MAX",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "Photorealistic enhancement",
+    detailedDescription:
+      "Delivers photorealistic enhancement with clean, natural results. Excels with low-resolution inputs, producing professional-grade output.",
+    bestFor: "Low-res photos needing realistic detail",
+    category: "Generative",
+  },
+  {
+    id: "Recovery V2",
+    name: "Recovery V2",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "Extreme low-res recovery",
+    detailedDescription:
+      "High fidelity upscaling for extremely low-resolution images. Preserves natural detail and sharpness even from heavily degraded sources.",
+    bestFor: "Tiny thumbnails, severely degraded photos",
+    category: "Generative",
+  },
+  {
+    id: "Redefine",
+    name: "Redefine",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "Creative upscaling",
+    detailedDescription:
+      "Elevates creativity with realistic upscaling, balancing fidelity and creative detail. Great for low-resolution, blurry, and AI-generated images.",
+    bestFor: "AI art, blurry photos, creative enhancement",
+    category: "Generative",
+  },
+  {
+    id: "Wonder",
+    name: "Wonder",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "All-purpose quality boost",
+    detailedDescription:
+      "Exceptional outputs across all different types of input quality. A streamlined option for professionals who want great results without parameter tuning.",
+    bestFor: "Any image — simple, reliable quality improvement",
+    category: "Generative",
+  },
+];
+
 export const ALL_MODELS: ModelDefinition[] = [
   ...IMAGE_MODELS,
   ...VIDEO_MODELS,
   ...IMAGE_TO_VIDEO_MODELS,
+  ...UPSCALE_MODELS,
 ];
 
 export function getModelsByType(
@@ -178,6 +286,8 @@ export function getModelsByType(
       return VIDEO_MODELS;
     case "image-to-video":
       return IMAGE_TO_VIDEO_MODELS;
+    case "image-upscale":
+      return UPSCALE_MODELS;
   }
 }
 
