@@ -6,6 +6,7 @@ import { getProvider } from "@/lib/providers";
 import type { ProviderName } from "@/lib/providers";
 import { saveMedia } from "@/lib/media-storage";
 import { getImageDimensions } from "@/lib/image-dimensions";
+import { generateAndSaveThumbnail } from "@/lib/thumbnail";
 import { v4 as uuidv4 } from "uuid";
 
 export async function GET(
@@ -88,6 +89,15 @@ export async function GET(
         mimeType
       );
 
+      let thumbnailPath: string | null = null;
+      if (assetType === "image") {
+        thumbnailPath = await generateAndSaveThumbnail(
+          result.videoBuffer,
+          generation.projectId,
+          assetId
+        );
+      }
+
       await db.insert(mediaAssets).values({
         id: assetId,
         generationId: generation.id,
@@ -97,6 +107,7 @@ export async function GET(
         model: job.model ?? (job.provider === "topaz" ? "Standard V2" : job.provider === "gemini" ? "veo-2.0-generate-001" : "sora-2"),
         prompt: generation.prompt,
         filePath,
+        thumbnailPath,
         mimeType,
         width: dims?.width ?? null,
         height: dims?.height ?? null,

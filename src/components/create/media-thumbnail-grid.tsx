@@ -6,6 +6,7 @@ interface MediaAsset {
   id: string;
   type: "image" | "video";
   filePath: string;
+  thumbnailPath?: string | null;
   mimeType: string;
   prompt: string;
 }
@@ -83,7 +84,7 @@ function MediaThumbnail({
       onClick={onClick}
     >
       <img
-        src={asset.filePath}
+        src={asset.thumbnailPath ?? asset.filePath}
         alt={asset.prompt}
         className="w-full h-full object-cover"
         loading="lazy"

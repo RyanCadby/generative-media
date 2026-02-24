@@ -26,10 +26,22 @@ function isKlingModel(modelId?: string): boolean {
   return !!modelId && modelId.toLowerCase().includes("kling");
 }
 
+function isSeedanceModel(modelId?: string): boolean {
+  return !!modelId && modelId.toLowerCase().includes("seedance");
+}
+
 function mapDimensions(
   aspectRatio?: string,
   modelId?: string
 ): { width: number; height: number } {
+  // Direct WIDTHxHEIGHT format from Seedance resolution selector
+  if (aspectRatio) {
+    const match = aspectRatio.match(/^(\d+)x(\d+)$/);
+    if (match) {
+      return { width: parseInt(match[1], 10), height: parseInt(match[2], 10) };
+    }
+  }
+
   if (isKlingModel(modelId)) {
     switch (aspectRatio) {
       case "9:16":
@@ -38,6 +50,17 @@ function mapDimensions(
         return { width: 1080, height: 1080 };
       default:
         return { width: 1920, height: 1080 };
+    }
+  }
+
+  if (isSeedanceModel(modelId)) {
+    switch (aspectRatio) {
+      case "9:16":
+        return { width: 1088, height: 1920 };
+      case "1:1":
+        return { width: 1440, height: 1440 };
+      default:
+        return { width: 1920, height: 1088 };
     }
   }
 

@@ -15,6 +15,7 @@ import { getProvider } from "@/lib/providers";
 import type { ProviderName, GenerationType } from "@/lib/providers";
 import { saveMedia } from "@/lib/media-storage";
 import { getImageDimensions } from "@/lib/image-dimensions";
+import { generateAndSaveThumbnail } from "@/lib/thumbnail";
 import { readFile, unlink } from "fs/promises";
 
 export async function createProject() {
@@ -166,6 +167,7 @@ export async function submitGeneration(
         buffer,
         result.mimeType
       );
+      const thumbnailPath = await generateAndSaveThumbnail(buffer, projectId, assetId);
 
       await db.insert(mediaAssets).values({
         id: assetId,
@@ -176,6 +178,7 @@ export async function submitGeneration(
         model: modelId,
         prompt: content,
         filePath,
+        thumbnailPath,
         mimeType: result.mimeType,
         width: dims?.width ?? null,
         height: dims?.height ?? null,

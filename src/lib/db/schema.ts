@@ -62,6 +62,7 @@ export const mediaAssets = pgTable("media_assets", {
   model: text("model").notNull(),
   prompt: text("prompt").notNull(),
   filePath: text("file_path").notNull(),
+  thumbnailPath: text("thumbnail_path"),
   mimeType: text("mime_type").notNull(),
   width: integer("width"),
   height: integer("height"),

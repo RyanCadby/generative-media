@@ -24,6 +24,13 @@ import {
 import { ModelMegaMenu } from "./model-mega-menu";
 import { UpscaleParamsPanel } from "./upscale-params-panel";
 import { getDefaultUpscaleParams } from "@/lib/upscale-params";
+import {
+  SEEDANCE_TIERS,
+  DEFAULT_SEEDANCE_TIER,
+  DEFAULT_SEEDANCE_RESOLUTION,
+  formatResolution,
+  isSeedanceModelId,
+} from "@/lib/seedance-resolutions";
 import type { Generation, UploadedImage, ReuseSettings } from "./create-view";
 
 interface GenerationInputProps {
@@ -62,6 +69,8 @@ export function GenerationInput({
     getDefaultModel("text-to-image")
   );
   const [aspectRatio, setAspectRatio] = useState<string>("16:9");
+  const [seedanceTier, setSeedanceTier] = useState<string>(DEFAULT_SEEDANCE_TIER);
+  const [seedanceResolution, setSeedanceResolution] = useState<string>(DEFAULT_SEEDANCE_RESOLUTION);
   const [scaleFactor, setScaleFactor] = useState<string>("2");
   const [upscaleParams, setUpscaleParams] = useState<Record<string, unknown>>(
     () => getDefaultUpscaleParams(getDefaultModel("image-upscale").id)
@@ -193,6 +202,16 @@ export function GenerationInput({
   };
 
   const isUpscale = generationType === "image-upscale";
+  const isSeedance = isSeedanceModelId(selectedModel.id);
+  const currentTierResolutions = SEEDANCE_TIERS.find(t => t.id === seedanceTier)?.resolutions ?? [];
+
+  const handleSeedanceTierChange = (tierId: string) => {
+    setSeedanceTier(tierId);
+    const tier = SEEDANCE_TIERS.find(t => t.id === tierId);
+    if (tier && tier.resolutions.length > 0) {
+      setSeedanceResolution(formatResolution(tier.resolutions[0].width, tier.resolutions[0].height));
+    }
+  };
 
   const handleModelChange = (modelId: string) => {
     const availableModels = getModelsByType(generationType);
@@ -259,7 +278,9 @@ export function GenerationInput({
         uploadMimeType,
         isUpscale ? parseInt(scaleFactor, 10) : undefined,
         isUpscale ? upscaleParams : undefined,
-        (generationType === "text-to-video" || generationType === "image-to-video") ? aspectRatio : undefined
+        (generationType === "text-to-video" || generationType === "image-to-video")
+          ? (isSeedance ? seedanceResolution : aspectRatio)
+          : undefined
       );
 
       onUploadedImageChange(null);
@@ -296,23 +317,60 @@ export function GenerationInput({
         />
 
         {(generationType === "text-to-video" || generationType === "image-to-video") && (
-          <div className="flex items-center gap-1.5">
-            {["16:9", "9:16", "1:1"].map((ratio) => (
-              <button
-                key={ratio}
-                type="button"
-                onClick={() => setAspectRatio(ratio)}
-                disabled={isLoading}
-                className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors ${
-                  aspectRatio === ratio
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                }`}
-              >
-                {ratio}
-              </button>
-            ))}
-          </div>
+          isSeedance ? (
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                {SEEDANCE_TIERS.map((tier) => (
+                  <button
+                    key={tier.id}
+                    type="button"
+                    onClick={() => handleSeedanceTierChange(tier.id)}
+                    disabled={isLoading}
+                    className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors ${
+                      seedanceTier === tier.id
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    }`}
+                  >
+                    {tier.label}
+                  </button>
+                ))}
+              </div>
+              <Select value={seedanceResolution} onValueChange={setSeedanceResolution}>
+                <SelectTrigger className="h-7 w-auto min-w-[160px] border-0 bg-muted text-xs px-2 focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {currentTierResolutions.map((res) => {
+                    const value = formatResolution(res.width, res.height);
+                    return (
+                      <SelectItem key={value} value={value}>
+                        {res.label}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              {["16:9", "9:16", "1:1"].map((ratio) => (
+                <button
+                  key={ratio}
+                  type="button"
+                  onClick={() => setAspectRatio(ratio)}
+                  disabled={isLoading}
+                  className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors ${
+                    aspectRatio === ratio
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  }`}
+                >
+                  {ratio}
+                </button>
+              ))}
+            </div>
+          )
         )}
 
         {isUpscale && (

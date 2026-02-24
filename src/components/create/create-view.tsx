@@ -20,6 +20,7 @@ export interface Generation {
     id: string;
     type: "image" | "video";
     filePath: string;
+    thumbnailPath: string | null;
     mimeType: string;
     prompt: string;
     width: number | null;
