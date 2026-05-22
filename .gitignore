@@ -40,8 +40,5 @@ next-env.d.ts
 /public/media/*
 !/public/media/.gitkeep
 
-# drizzle
-/drizzle/meta
-
 # tmp
 /tmp/
