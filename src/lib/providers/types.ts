@@ -36,8 +36,16 @@ export interface UpscaleOptions {
   texture?: number;
   prompt?: string;
   autoprompt?: boolean;
-  // Recovery V2
-  detail?: number;
+  // Recovery V2 uses detail as a decimal; Bloom uses it as a boolean.
+  // Allow either at the type level — provider stringifies and Topaz parses per-model.
+  detail?: number | boolean;
+  detail_strength?: number;
+  // Bloom Creative
+  face_preservation?: boolean;
+  color_preservation?: boolean;
+  creativity_boost?: boolean;
+  // Wonder 3
+  enhancement_strength?: "low" | "medium" | "high";
   // Allow additional params without interface updates
   [key: string]: unknown;
 }

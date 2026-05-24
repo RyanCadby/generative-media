@@ -39,6 +39,7 @@ export function UpscaleParamsPanel({
   };
 
   const faceEnabled = !!params.face_enhancement;
+  const detailEnabled = !!params.detail;
 
   return (
     <div>
@@ -63,6 +64,10 @@ export function UpscaleParamsPanel({
                 desc.key === "face_enhancement_creativity") &&
               !faceEnabled
             ) {
+              return null;
+            }
+            // Hide detail_strength when detail toggle is off
+            if (desc.key === "detail_strength" && !detailEnabled) {
               return null;
             }
 

@@ -17,6 +17,7 @@ interface ModelMegaMenuProps {
 }
 
 const categoryMeta: Record<string, { label: string; icon: typeof Sparkles; description: string }> = {
+  // Image generation categories
   Enhance: {
     label: "Enhance",
     icon: Layers,
@@ -26,6 +27,22 @@ const categoryMeta: Record<string, { label: string; icon: typeof Sparkles; descr
     label: "Generative",
     icon: Sparkles,
     description: "AI-powered — adds realistic detail",
+  },
+  // Topaz upscale tiers
+  Gigapixel: {
+    label: "Gigapixel",
+    icon: Layers,
+    description: "Precision — improve resolution, preserve source characteristics",
+  },
+  Wonder: {
+    label: "Wonder",
+    icon: Sparkles,
+    description: "Generative — add detail and texture while preserving intent",
+  },
+  Bloom: {
+    label: "Bloom",
+    icon: Sparkles,
+    description: "Creative — transform with new detail or stylization",
   },
 };
 
@@ -47,7 +64,7 @@ export function ModelMegaMenu({
     {}
   );
 
-  const categoryOrder = ["Enhance", "Generative", "Other"];
+  const categoryOrder = ["Gigapixel", "Wonder", "Bloom", "Enhance", "Generative", "Other"];
   const sortedCategories = categoryOrder.filter((c) => grouped[c]);
 
   return (

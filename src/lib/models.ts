@@ -41,11 +41,32 @@ export const IMAGE_MODELS: ModelDefinition[] = [
     description: "Previous generation, still available",
   },
   {
+    id: "gpt-image-2",
+    name: "GPT Image 2",
+    provider: "openai",
+    generationType: "text-to-image",
+    description: "Flagship GPT image model, up to 3840x2160",
+  },
+  {
+    id: "gpt-image-1.5",
+    name: "GPT Image 1.5",
+    provider: "openai",
+    generationType: "text-to-image",
+    description: "Previous flagship GPT image model",
+  },
+  {
     id: "gpt-image-1",
     name: "GPT Image 1",
     provider: "openai",
     generationType: "text-to-image",
     description: "GPT-native image generation",
+  },
+  {
+    id: "gpt-image-1-mini",
+    name: "GPT Image 1 Mini",
+    provider: "openai",
+    generationType: "text-to-image",
+    description: "Lightweight, faster GPT image generation",
   },
   {
     id: "gen4_image",
@@ -77,6 +98,13 @@ export const VIDEO_MODELS: ModelDefinition[] = [
     provider: "gemini",
     generationType: "text-to-video",
     description: "Faster Veo 3.1 variant",
+  },
+  {
+    id: "veo-3.1-lite-generate-preview",
+    name: "Veo 3.1 Lite",
+    provider: "gemini",
+    generationType: "text-to-video",
+    description: "High-efficiency, low-cost Veo 3.1 variant",
   },
   {
     id: "veo-2.0-generate-001",
@@ -166,106 +194,164 @@ export const IMAGE_TO_VIDEO_MODELS: ModelDefinition[] = [
 ];
 
 export const UPSCALE_MODELS: ModelDefinition[] = [
-  // Enhance (Standard) models
+  // Gigapixel (Precision tier) — improve resolution, preserve source characteristics
   {
     id: "Standard V2",
-    name: "Standard V2",
+    name: "Gigapixel: Standard 2",
     provider: "topaz",
     generationType: "image-upscale",
     description: "General-purpose enhancement",
     detailedDescription:
       "Balances detail, sharpness, and noise reduction across a wide range of image types. The best starting point for most images.",
     bestFor: "Most images — photos, screenshots, mixed content",
-    category: "Enhance",
+    category: "Gigapixel",
   },
   {
     id: "High Fidelity V2",
-    name: "High Fidelity V2",
+    name: "Gigapixel: High Fidelity 2",
     provider: "topaz",
     generationType: "image-upscale",
     description: "Professional photography detail",
     detailedDescription:
       "Preserves intricate details in already-sharp professional photography. Ideal when you need pixel-perfect upscaling without artifacts.",
     bestFor: "High-quality photos, professional photography",
-    category: "Enhance",
+    category: "Gigapixel",
   },
   {
     id: "Low Resolution V2",
-    name: "Low Resolution V2",
+    name: "Gigapixel: Low Resolution 2",
     provider: "topaz",
     generationType: "image-upscale",
     description: "Web graphics and screenshots",
     detailedDescription:
       "Enhances clarity and detail in low-resolution images like web graphics, screenshots, and compressed digital assets.",
     bestFor: "Web images, screenshots, compressed JPEGs",
-    category: "Enhance",
+    category: "Gigapixel",
   },
   {
     id: "CGI",
-    name: "CGI",
+    name: "Gigapixel: Art & CGI",
     provider: "topaz",
     generationType: "image-upscale",
     description: "Digital art and 3D renders",
     detailedDescription:
       "Optimized for CGI and digital illustrations, enhancing texture and detail in computer-generated images without introducing unwanted artifacts.",
     bestFor: "3D renders, digital art, AI-generated images",
-    category: "Enhance",
+    category: "Gigapixel",
   },
   {
     id: "Text Refine",
-    name: "Text Refine",
+    name: "Gigapixel: Text & Shapes",
     provider: "topaz",
     generationType: "image-upscale",
     description: "Text and shape clarity",
     detailedDescription:
       "Designed for images with text and shapes, enhancing clarity and sharpness of typographic and geometric elements.",
     bestFor: "Documents, signage, logos, UI screenshots",
-    category: "Enhance",
+    category: "Gigapixel",
   },
-  // Enhance Generative models
+
+  // Wonder (Generative tier) — add detail and texture while preserving intent
   {
     id: "Standard MAX",
-    name: "Standard MAX",
+    name: "Wonder: Standard Max",
     provider: "topaz",
     generationType: "image-upscale",
     description: "Photorealistic enhancement",
     detailedDescription:
       "Delivers photorealistic enhancement with clean, natural results. Excels with low-resolution inputs, producing professional-grade output.",
     bestFor: "Low-res photos needing realistic detail",
-    category: "Generative",
+    category: "Wonder",
   },
   {
-    id: "Recovery V2",
-    name: "Recovery V2",
+    id: "Wonder 2",
+    name: "Wonder: Wonder 2",
     provider: "topaz",
     generationType: "image-upscale",
-    description: "Extreme low-res recovery",
+    description: "Updated all-purpose generative upscale",
     detailedDescription:
-      "High fidelity upscaling for extremely low-resolution images. Preserves natural detail and sharpness even from heavily degraded sources.",
-    bestFor: "Tiny thumbnails, severely degraded photos",
-    category: "Generative",
+      "Topaz's current default generative upscaler. Stronger detail generation than Wonder v1 across a wide range of input quality.",
+    bestFor: "Most images — modern default generative upscale",
+    category: "Wonder",
+  },
+  {
+    id: "Wonder 3",
+    name: "Wonder: Wonder 3",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "Most advanced realism upscaler",
+    detailedDescription:
+      "Topaz's newest generative upscaler. Improves on Wonder 2 with more natural detail, fewer plastic artifacts, and selectable Low/Medium/High enhancement levels.",
+    bestFor: "Portraits, wildlife, and complex textures where realism matters",
+    category: "Wonder",
   },
   {
     id: "Redefine",
-    name: "Redefine",
+    name: "Wonder: Redefine",
     provider: "topaz",
     generationType: "image-upscale",
-    description: "Creative upscaling",
+    description: "Prompt-driven creative upscaling",
     detailedDescription:
-      "Elevates creativity with realistic upscaling, balancing fidelity and creative detail. Great for low-resolution, blurry, and AI-generated images.",
+      "Generative enhancement with prompt-based control. Lower creativity values stay faithful to the source; higher values introduce more interpretive detail.",
     bestFor: "AI art, blurry photos, creative enhancement",
-    category: "Generative",
+    category: "Wonder",
+  },
+  {
+    id: "Recover 3",
+    name: "Wonder: Recover 3",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "Heavy degradation recovery",
+    detailedDescription:
+      "Restores heavily degraded or damaged source images. Successor to Recovery V2 with improved fidelity and detail reconstruction.",
+    bestFor: "Severely degraded photos, archival scans, heavy compression",
+    category: "Wonder",
   },
   {
     id: "Wonder",
-    name: "Wonder",
+    name: "Wonder: Wonder",
     provider: "topaz",
     generationType: "image-upscale",
-    description: "All-purpose quality boost",
+    description: "Legacy all-purpose quality boost",
     detailedDescription:
-      "Exceptional outputs across all different types of input quality. A streamlined option for professionals who want great results without parameter tuning.",
-    bestFor: "Any image — simple, reliable quality improvement",
-    category: "Generative",
+      "Original Wonder model. Wonder 2 is the current recommended replacement, but Wonder remains available for reproducing earlier results.",
+    bestFor: "Reproducing prior Wonder outputs",
+    category: "Wonder",
+  },
+  {
+    id: "Recovery V2",
+    name: "Wonder: Recovery V2",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "Legacy extreme low-res recovery",
+    detailedDescription:
+      "Previous-generation recovery model. Recover 3 is the recommended successor, but Recovery V2 remains available.",
+    bestFor: "Tiny thumbnails, severely degraded photos (legacy)",
+    category: "Wonder",
+  },
+
+  // Bloom (Creative tier) — transform with new, creative detail or stylization
+  {
+    id: "Bloom",
+    name: "Bloom: Bloom Creative",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "Generative enlargement for AI art",
+    detailedDescription:
+      "Enlarges AI-generated artwork up to 8× while creatively introducing new detail, texture, and visual elements. Accepts a prompt to guide the result.",
+    bestFor: "AI-generated artwork, illustrations needing creative detail",
+    category: "Bloom",
+  },
+  {
+    id: "Bloom Realism",
+    name: "Bloom: Bloom Realism",
+    provider: "topaz",
+    generationType: "image-upscale",
+    description: "Realistic enhancement for AI art",
+    detailedDescription:
+      "Removes the plastic, artificial feel of AI-generated images by restoring natural detail and texture across skin, hair, fabrics, and other materials.",
+    bestFor: "AI-generated portraits and photoreal scenes",
+    category: "Bloom",
   },
 ];
 

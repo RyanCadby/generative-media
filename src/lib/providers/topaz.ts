@@ -25,7 +25,17 @@ function getMimeExtension(mimeType: string): string {
 }
 
 // Generative models use a different API endpoint
-const GENERATIVE_MODELS = new Set(["Redefine", "Recovery V2", "Standard MAX", "Wonder"]);
+const GENERATIVE_MODELS = new Set([
+  "Redefine",
+  "Recovery V2",
+  "Standard MAX",
+  "Wonder",
+  "Wonder 2",
+  "Wonder 3",
+  "Recover 3",
+  "Bloom",
+  "Bloom Realism",
+]);
 
 export const topazProvider: GenerationProvider = {
   name: "topaz",
@@ -60,17 +70,15 @@ export const topazProvider: GenerationProvider = {
       formData.append("model", options.modelId);
     }
 
-    // Scale — generative models ignore scale_multiplier, so compute explicit output dimensions
-    const isGen = GENERATIVE_MODELS.has(options?.modelId ?? "");
+    // Scale — Topaz controls upscale via output_width/output_height for all models
+    // (there is no scale_multiplier parameter; it is silently ignored).
     if (options?.scaleFactor && options.scaleFactor > 1) {
-      formData.append("scale_multiplier", String(options.scaleFactor));
-      if (isGen) {
-        const dims = getImageDimensions(buffer);
-        if (dims) {
-          formData.append("output_width", String(Math.round(dims.width * options.scaleFactor)));
-          formData.append("output_height", String(Math.round(dims.height * options.scaleFactor)));
-        }
+      const dims = getImageDimensions(buffer);
+      if (!dims) {
+        throw new Error("Could not read source image dimensions for upscale");
       }
+      formData.append("output_width", String(Math.round(dims.width * options.scaleFactor)));
+      formData.append("output_height", String(Math.round(dims.height * options.scaleFactor)));
     } else {
       if (options?.outputWidth) {
         formData.append("output_width", String(options.outputWidth));
@@ -121,14 +129,40 @@ export const topazProvider: GenerationProvider = {
     }
     if (options?.prompt) {
       formData.append("prompt", options.prompt);
-      formData.append("autoprompt", "false");
-    } else if (options?.modelId === "Redefine") {
+    }
+    // autoprompt: respect explicit value when provided; otherwise default for
+    // Redefine to true when no prompt was given (preserving prior behavior).
+    if (options?.autoprompt !== undefined) {
+      formData.append("autoprompt", String(options.autoprompt));
+    } else if (!options?.prompt && options?.modelId === "Redefine") {
       formData.append("autoprompt", "true");
+    } else if (options?.prompt) {
+      formData.append("autoprompt", "false");
     }
 
-    // Recovery V2
+    // detail / detail_strength — for Bloom these are boolean+number;
+    // for Recovery V2 detail is a decimal (the API accepts both per-model).
     if (options?.detail !== undefined) {
       formData.append("detail", String(options.detail));
+    }
+    if (options?.detail_strength !== undefined) {
+      formData.append("detail_strength", String(options.detail_strength));
+    }
+
+    // Bloom Creative
+    if (options?.face_preservation !== undefined) {
+      formData.append("face_preservation", String(options.face_preservation));
+    }
+    if (options?.color_preservation !== undefined) {
+      formData.append("color_preservation", String(options.color_preservation));
+    }
+    if (options?.creativity_boost !== undefined) {
+      formData.append("creativity_boost", String(options.creativity_boost));
+    }
+
+    // Wonder 3
+    if (options?.enhancement_strength) {
+      formData.append("enhancement_strength", String(options.enhancement_strength));
     }
 
     const isGenerative = GENERATIVE_MODELS.has(options?.modelId ?? "");

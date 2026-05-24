@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { X, ChevronLeft, ChevronRight, Download, Copy, Check, SplitSquareHorizontal } from "lucide-react";
 import { BeforeAfterSlider } from "./before-after-slider";
 import {
@@ -83,6 +83,9 @@ function getMetadataItems(
   return items;
 }
 
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 8;
+
 export function MediaLightbox({
   items,
   initialIndex,
@@ -92,6 +95,14 @@ export function MediaLightbox({
   const [index, setIndex] = useState(initialIndex);
   const [copied, setCopied] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+  const [imageWrapper, setImageWrapper] = useState<HTMLDivElement | null>(null);
+  const dragStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
   useEffect(() => {
     setIndex(initialIndex);
@@ -99,6 +110,17 @@ export function MediaLightbox({
 
   const current = items[index];
   const hasMultiple = items.length > 1;
+
+  const resetZoom = useCallback(() => {
+    zoomRef.current = 1;
+    panRef.current = { x: 0, y: 0 };
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  useEffect(() => {
+    resetZoom();
+  }, [index, open, compareMode, resetZoom]);
 
   const goNext = useCallback(() => {
     setIndex((i) => (i + 1) % items.length);
@@ -120,6 +142,81 @@ export function MediaLightbox({
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [open, goNext, goPrev, onOpenChange]);
+
+  // Cmd/Ctrl + wheel zooms around the cursor. Registered manually so we can
+  // use { passive: false } and call preventDefault to override browser zoom.
+  // The wrapper is tracked via state-backed callback ref so this effect re-runs
+  // the moment the element actually mounts inside the Radix portal.
+  useEffect(() => {
+    if (!imageWrapper) return;
+
+    const handler = (e: WheelEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      e.preventDefault();
+
+      const rect = imageWrapper.getBoundingClientRect();
+      const cursorX = e.clientX - rect.left - rect.width / 2;
+      const cursorY = e.clientY - rect.top - rect.height / 2;
+
+      const prevZoom = zoomRef.current;
+      const zoomDelta = -e.deltaY * 0.005;
+      const newZoom = Math.max(
+        MIN_ZOOM,
+        Math.min(MAX_ZOOM, prevZoom * Math.exp(zoomDelta))
+      );
+      if (newZoom === prevZoom) return;
+
+      const scaleRatio = newZoom / prevZoom;
+      const prevPan = panRef.current;
+      const newPan =
+        newZoom <= MIN_ZOOM
+          ? { x: 0, y: 0 }
+          : {
+              x: cursorX - (cursorX - prevPan.x) * scaleRatio,
+              y: cursorY - (cursorY - prevPan.y) * scaleRatio,
+            };
+
+      zoomRef.current = newZoom;
+      panRef.current = newPan;
+      setZoom(newZoom);
+      setPan(newPan);
+    };
+
+    imageWrapper.addEventListener("wheel", handler, { passive: false });
+    return () => imageWrapper.removeEventListener("wheel", handler);
+  }, [imageWrapper]);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (zoomRef.current <= MIN_ZOOM) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      panX: panRef.current.x,
+      panY: panRef.current.y,
+    };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging) return;
+    const newPan = {
+      x: dragStartRef.current.panX + (e.clientX - dragStartRef.current.x),
+      y: dragStartRef.current.panY + (e.clientY - dragStartRef.current.y),
+    };
+    panRef.current = newPan;
+    setPan(newPan);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging) return;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // pointer may already be released
+    }
+    setIsDragging(false);
+  };
 
   if (!current) return null;
 
@@ -154,11 +251,11 @@ export function MediaLightbox({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        onPointerDownOutside={(e) => {
-          // Close when clicking the dark backdrop area
-          const target = e.target as HTMLElement;
-          if (target.closest("[data-lightbox-panel]")) {
-            e.preventDefault();
+        onClick={(e) => {
+          // DialogContent fills the viewport — a click whose target is the
+          // container itself (not the panel inside) is a backdrop click.
+          if (e.target === e.currentTarget) {
+            onOpenChange(false);
           }
         }}
       >
@@ -235,12 +332,35 @@ export function MediaLightbox({
                 className="max-w-full max-h-full object-contain"
               />
             ) : (
-              <img
-                key={asset.id}
-                src={asset.filePath}
-                alt={asset.prompt}
-                className="max-w-full max-h-full object-contain"
-              />
+              <div
+                ref={setImageWrapper}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                className="relative w-full h-full flex items-center justify-center overflow-hidden"
+                style={{
+                  cursor:
+                    zoom > MIN_ZOOM
+                      ? isDragging
+                        ? "grabbing"
+                        : "grab"
+                      : "default",
+                }}
+              >
+                <img
+                  key={asset.id}
+                  src={asset.filePath}
+                  alt={asset.prompt}
+                  draggable={false}
+                  className="max-w-full max-h-full object-contain select-none"
+                  style={{
+                    transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
+                    transformOrigin: "center center",
+                    transition: isDragging ? "none" : "transform 60ms ease-out",
+                  }}
+                />
+              </div>
             )}
 
             {/* Counter */}
@@ -253,7 +373,7 @@ export function MediaLightbox({
 
           {/* Sidebar */}
           <div className="w-[320px] shrink-0 border-l flex flex-col overflow-y-auto">
-            <div className="p-5 space-y-5">
+            <div className="px-5 pb-5 pt-14 space-y-5">
               {/* Prompt */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">

@@ -75,7 +75,7 @@ export const UPSCALE_MODEL_PARAMS: Record<string, ParamDescriptor[]> = {
 
   // Generative: Redefine
   "Redefine": [
-    { key: "creativity", label: "Creativity", type: "slider", min: 1, max: 6, step: 1, default: 3 },
+    { key: "creativity", label: "Creativity", type: "slider", min: 1, max: 9, step: 1, default: 3 },
     { key: "texture", label: "Texture", type: "slider", min: 1, max: 5, step: 1, default: 3 },
     { key: "sharpen", label: "Sharpen", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
     { key: "denoise", label: "Denoise", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
@@ -88,9 +88,91 @@ export const UPSCALE_MODEL_PARAMS: Record<string, ParamDescriptor[]> = {
     { key: "detail", label: "Detail", type: "slider", min: 0, max: 1, step: 0.05, default: 0.5 },
   ],
 
-  // No configurable parameters
-  "Standard MAX": [],
+  // Generative: Recover 3 — successor to Recovery V2
+  "Recover 3": [
+    ...FACE_PARAMS,
+    SUBJECT_DETECTION,
+    { key: "creativity", label: "Creativity", type: "slider", min: 1, max: 9, step: 1, default: 3 },
+    { key: "texture", label: "Texture", type: "slider", min: 1, max: 5, step: 1, default: 1 },
+    { key: "sharpen", label: "Sharpen", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
+    { key: "denoise", label: "Denoise", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
+  ],
+
+  // Wonder: Standard Max — full endpoint param set, no model-specific params
+  "Standard MAX": [
+    { key: "creativity", label: "Creativity", type: "slider", min: 1, max: 9, step: 1, default: 3 },
+    { key: "texture", label: "Texture", type: "slider", min: 1, max: 5, step: 1, default: 1 },
+    { key: "autoprompt", label: "Auto Prompt", type: "toggle", default: false },
+    ...FACE_PARAMS,
+    SUBJECT_DETECTION,
+    { key: "sharpen", label: "Sharpen", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
+    { key: "denoise", label: "Denoise", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
+    { key: "detail", label: "Detail", type: "toggle", default: false },
+    { key: "detail_strength", label: "Detail Strength", type: "slider", min: 0, max: 10, step: 0.5, default: 5 },
+  ],
+
+  // Wonder (legacy) — kept available; no advanced params surfaced
   "Wonder": [],
+
+  // Generative: Wonder 2 — current default generative upscaler
+  "Wonder 2": [
+    ...FACE_PARAMS,
+    SUBJECT_DETECTION,
+    { key: "creativity", label: "Creativity", type: "slider", min: 1, max: 9, step: 1, default: 3 },
+    { key: "texture", label: "Texture", type: "slider", min: 1, max: 5, step: 1, default: 1 },
+    { key: "sharpen", label: "Sharpen", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
+    { key: "denoise", label: "Denoise", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
+  ],
+
+  // Generative: Wonder 3 — newest realism upscaler; full endpoint params + enhancement_strength select
+  "Wonder 3": [
+    {
+      key: "enhancement_strength",
+      label: "Enhancement Strength",
+      type: "select",
+      options: [
+        { value: "low", label: "Low" },
+        { value: "medium", label: "Medium" },
+        { value: "high", label: "High" },
+      ],
+      default: "medium",
+    },
+    { key: "creativity", label: "Creativity", type: "slider", min: 1, max: 9, step: 1, default: 3 },
+    { key: "texture", label: "Texture", type: "slider", min: 1, max: 5, step: 1, default: 1 },
+    { key: "autoprompt", label: "Auto Prompt", type: "toggle", default: false },
+    ...FACE_PARAMS,
+    SUBJECT_DETECTION,
+    { key: "sharpen", label: "Sharpen", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
+    { key: "denoise", label: "Denoise", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
+    { key: "detail", label: "Detail", type: "toggle", default: false },
+    { key: "detail_strength", label: "Detail Strength", type: "slider", min: 0, max: 10, step: 0.5, default: 5 },
+  ],
+
+  // Generative: Bloom Creative (API model id: "Bloom")
+  "Bloom": [
+    { key: "creativity", label: "Creativity", type: "slider", min: 1, max: 9, step: 1, default: 3 },
+    { key: "texture", label: "Texture", type: "slider", min: 1, max: 5, step: 1, default: 1 },
+    { key: "autoprompt", label: "Auto Prompt", type: "toggle", default: false },
+    ...FACE_PARAMS,
+    SUBJECT_DETECTION,
+    { key: "face_preservation", label: "Face Preservation", type: "toggle", default: true },
+    { key: "color_preservation", label: "Color Preservation", type: "toggle", default: true },
+    { key: "creativity_boost", label: "Creativity Boost", type: "toggle", default: false },
+    { key: "sharpen", label: "Sharpen", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
+    { key: "denoise", label: "Denoise", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
+    { key: "detail", label: "Detail", type: "toggle", default: false },
+    { key: "detail_strength", label: "Detail Strength", type: "slider", min: 0, max: 10, step: 0.5, default: 5 },
+  ],
+
+  // Generative: Bloom Realism (creativity 1-4 per docs, narrower than Bloom Creative)
+  "Bloom Realism": [
+    { key: "creativity", label: "Creativity", type: "slider", min: 1, max: 4, step: 1, default: 2 },
+    { key: "texture", label: "Texture", type: "slider", min: 1, max: 5, step: 1, default: 1 },
+    ...FACE_PARAMS,
+    SUBJECT_DETECTION,
+    { key: "sharpen", label: "Sharpen", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
+    { key: "denoise", label: "Denoise", type: "slider", min: 0, max: 1, step: 0.05, default: 0 },
+  ],
 };
 
 export function getDefaultUpscaleParams(modelId: string): Record<string, unknown> {
