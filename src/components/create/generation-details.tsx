@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { ImageHoverPreview } from "@/components/ui/image-hover-preview";
 import {
   providerColors,
   providerLabels,
@@ -31,6 +32,14 @@ function getMetadataDisplay(
   // Scale factor
   if (meta.scaleFactor !== undefined) {
     items.push({ label: "Scale", value: `${meta.scaleFactor}x` });
+  }
+
+  if (meta.aspectRatio !== undefined) {
+    items.push({ label: "Aspect", value: String(meta.aspectRatio) });
+  }
+
+  if (meta.numberOfImages !== undefined) {
+    items.push({ label: "Images", value: String(meta.numberOfImages) });
   }
 
   // Get param descriptors for this model to find labels and defaults
@@ -73,21 +82,41 @@ export function GenerationDetails({ generation }: GenerationDetailsProps) {
   return (
     <div className="space-y-2">
       {generation.prompt && (
-        <p className="text-sm text-foreground line-clamp-3">
+        <p className="text-sm text-foreground whitespace-pre-wrap">
           {generation.prompt}
         </p>
       )}
 
-      {generation.referenceImagePath && (
-        <div className="flex items-center gap-2">
-          <img
-            src={generation.referenceImagePath}
-            alt="Reference"
-            className="w-8 h-8 rounded-sm object-cover"
-          />
-          <span className="text-xs text-muted-foreground">Reference</span>
-        </div>
-      )}
+      {(() => {
+        const refUrls =
+          (generation.metadata?.referenceImages as string[] | undefined) ??
+          (generation.referenceImagePath ? [generation.referenceImagePath] : []);
+        if (refUrls.length === 0) return null;
+        const roles = generation.metadata?.referenceRoles as
+          | string[]
+          | undefined;
+        return (
+          <div className="flex items-center gap-2 flex-wrap">
+            {refUrls.map((url, i) => (
+              <span key={url} className="inline-flex items-center gap-1">
+                <ImageHoverPreview
+                  src={url}
+                  alt="Reference"
+                  className="w-8 h-8 rounded-sm object-cover"
+                />
+                {roles?.[i] && roles[i] !== "reference" && (
+                  <span className="text-[10px] text-primary font-medium capitalize">
+                    {roles[i]}
+                  </span>
+                )}
+              </span>
+            ))}
+            <span className="text-xs text-muted-foreground">
+              {refUrls.length > 1 ? `${refUrls.length} references` : "Reference"}
+            </span>
+          </div>
+        );
+      })()}
 
       <div className="flex items-center gap-1.5 flex-wrap">
         <Badge

@@ -9,11 +9,13 @@ import type { Generation, ReuseSettings } from "./create-view";
 interface GenerationFeedProps {
   generations: Generation[];
   onReuse: (settings: ReuseSettings) => void;
+  onRerun: (generation: Generation) => void;
   onUsePrompt: (prompt: string) => void;
+  onUseAsReference: (asset: { id: string; filePath: string; mimeType: string }) => void;
   jobProgress?: Record<string, number>;
 }
 
-export function GenerationFeed({ generations, onReuse, onUsePrompt, jobProgress }: GenerationFeedProps) {
+export function GenerationFeed({ generations, onReuse, onRerun, onUsePrompt, onUseAsReference, jobProgress }: GenerationFeedProps) {
   const topRef = useRef<HTMLDivElement>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
@@ -54,7 +56,9 @@ export function GenerationFeed({ generations, onReuse, onUsePrompt, jobProgress 
               key={generation.id}
               generation={generation}
               onReuse={onReuse}
+              onRerun={onRerun}
               onUsePrompt={onUsePrompt}
+              onUseAsReference={onUseAsReference}
               onAssetClick={handleAssetClick}
               jobProgress={jobProgress}
             />
@@ -67,6 +71,7 @@ export function GenerationFeed({ generations, onReuse, onUsePrompt, jobProgress 
         initialIndex={lightboxIndex}
         open={lightboxOpen}
         onOpenChange={setLightboxOpen}
+        onUseAsReference={onUseAsReference}
       />
     </>
   );

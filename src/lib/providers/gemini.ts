@@ -13,6 +13,83 @@ import type {
 
 const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY! });
 
+// Gemini Omni jobs poll the Interactions API rather than the Veo operations
+// API, so their job ids are prefixed to tell the two apart in checkVideoJob.
+const OMNI_JOB_PREFIX = "omni:";
+
+function isOmniModel(model: string): boolean {
+  return model.startsWith("gemini-omni");
+}
+
+async function startOmniVideo(
+  input: string | Array<{ type: "text"; text: string } | { type: "image"; data: string; mime_type: string }>,
+  aspectRatio: string
+): Promise<VideoJobResult> {
+  const interaction = await ai.interactions.create({
+    model: "gemini-omni-flash-preview",
+    input,
+    background: true,
+    store: true,
+    response_format: { type: "video", aspect_ratio: aspectRatio },
+  });
+
+  if (!interaction.id) {
+    throw new Error("Gemini Omni returned no interaction id");
+  }
+
+  return { jobId: `${OMNI_JOB_PREFIX}${interaction.id}` };
+}
+
+async function checkOmniJob(interactionId: string): Promise<VideoJobStatus> {
+  const interaction = await ai.interactions.get(interactionId);
+
+  if (
+    interaction.status === "in_progress" ||
+    interaction.status === "requires_action"
+  ) {
+    return { status: "processing" };
+  }
+
+  if (interaction.status !== "completed") {
+    return { status: "failed", error: `Interaction ${interaction.status}` };
+  }
+
+  const video = interaction.outputs?.find((o) => o.type === "video");
+  if (!video) {
+    return { status: "failed", error: "No video in response" };
+  }
+
+  const mimeType = video.mime_type ?? "video/mp4";
+
+  if (video.data) {
+    return {
+      status: "completed",
+      videoBuffer: Buffer.from(video.data, "base64"),
+      mimeType,
+    };
+  }
+
+  // Videos over ~4MB are delivered by URI instead of inline base64
+  if (video.uri) {
+    const res = await fetch(video.uri, {
+      headers: { "x-goog-api-key": process.env.GOOGLE_GENAI_API_KEY! },
+    });
+    if (!res.ok) {
+      return {
+        status: "failed",
+        error: `Video download failed with status ${res.status}`,
+      };
+    }
+    return {
+      status: "completed",
+      videoBuffer: Buffer.from(await res.arrayBuffer()),
+      mimeType,
+    };
+  }
+
+  return { status: "failed", error: "No video in response" };
+}
+
 export const geminiProvider: GenerationProvider = {
   name: "gemini",
 
@@ -20,8 +97,51 @@ export const geminiProvider: GenerationProvider = {
     prompt: string,
     options?: ImageGenerationOptions
   ): Promise<ImageResult> {
+    const model = options?.modelId ?? "gemini-3.1-flash-image";
+    const references = options?.referenceImages ?? [];
+
+    // Nano Banana (gemini-*) models generate images via generateContent;
+    // Imagen models use the dedicated generateImages endpoint.
+    if (model.startsWith("gemini-")) {
+      const response = await ai.models.generateContent({
+        model,
+        contents:
+          references.length > 0
+            ? [
+                { text: prompt },
+                ...references.map((ref) => ({
+                  inlineData: { data: ref.base64, mimeType: ref.mimeType },
+                })),
+              ]
+            : prompt,
+        config: {
+          responseModalities: ["IMAGE", "TEXT"],
+          imageConfig: {
+            aspectRatio: options?.aspectRatio ?? "1:1",
+          },
+        },
+      });
+
+      const parts = response.candidates?.[0]?.content?.parts ?? [];
+      for (const part of parts) {
+        if (part.inlineData?.data) {
+          return {
+            base64: part.inlineData.data,
+            mimeType: part.inlineData.mimeType ?? "image/png",
+          };
+        }
+      }
+      throw new Error("Gemini image generation returned no image data");
+    }
+
+    if (references.length > 0) {
+      throw new Error(
+        "Imagen models do not support reference images — use a Nano Banana model instead"
+      );
+    }
+
     const response = await ai.models.generateImages({
-      model: options?.modelId ?? "imagen-4.0-generate-001",
+      model,
       prompt,
       config: {
         numberOfImages: options?.numberOfImages ?? 1,
@@ -44,8 +164,14 @@ export const geminiProvider: GenerationProvider = {
     prompt: string,
     options?: VideoGenerationOptions
   ): Promise<VideoJobResult> {
+    const model = options?.modelId ?? "veo-3.1-generate-preview";
+
+    if (isOmniModel(model)) {
+      return startOmniVideo(prompt, options?.aspectRatio ?? "16:9");
+    }
+
     const operation = await ai.models.generateVideos({
-      model: options?.modelId ?? "veo-2.0-generate-001",
+      model,
       prompt,
       config: {
         aspectRatio: options?.aspectRatio ?? "16:9",
@@ -66,8 +192,20 @@ export const geminiProvider: GenerationProvider = {
     prompt: string,
     options?: VideoGenerationOptions
   ): Promise<VideoJobResult> {
+    const model = options?.modelId ?? "veo-3.1-generate-preview";
+
+    if (isOmniModel(model)) {
+      return startOmniVideo(
+        [
+          { type: "image", data: imageBase64, mime_type: imageMimeType },
+          { type: "text", text: prompt },
+        ],
+        options?.aspectRatio ?? "16:9"
+      );
+    }
+
     const operation = await ai.models.generateVideos({
-      model: options?.modelId ?? "veo-2.0-generate-001",
+      model,
       prompt,
       image: {
         imageBytes: imageBase64,
@@ -88,6 +226,10 @@ export const geminiProvider: GenerationProvider = {
 
   async checkVideoJob(jobId: string): Promise<VideoJobStatus> {
     try {
+      if (jobId.startsWith(OMNI_JOB_PREFIX)) {
+        return await checkOmniJob(jobId.slice(OMNI_JOB_PREFIX.length));
+      }
+
       // Reconstruct the operation from just the name string
       const operation = new GenerateVideosOperation();
       operation.name = jobId;

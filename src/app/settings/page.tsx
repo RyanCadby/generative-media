@@ -12,7 +12,8 @@ const providers = [
   {
     id: "gemini" as const,
     name: "Google Gemini",
-    description: "Image generation with Imagen and video generation with Veo models.",
+    description:
+      "Image generation with Nano Banana (Gemini) and Imagen models, video generation with Veo and Gemini Omni Flash. Imagen is deprecated and shuts down Aug 17, 2026.",
     docsUrl: "https://ai.google.dev/gemini-api/docs",
     apiKeysUrl: "https://aistudio.google.com/apikey",
     envVar: "GOOGLE_GENAI_API_KEY",
@@ -22,7 +23,8 @@ const providers = [
   {
     id: "openai" as const,
     name: "OpenAI",
-    description: "GPT Image generation and Sora video generation.",
+    description:
+      "GPT Image generation and Sora video generation. Sora is deprecated and the API shuts down Sep 24, 2026.",
     docsUrl: "https://platform.openai.com/docs/guides/images",
     apiKeysUrl: "https://platform.openai.com/api-keys",
     envVar: "OPENAI_API_KEY",
@@ -32,7 +34,8 @@ const providers = [
   {
     id: "runway" as const,
     name: "Runway",
-    description: "Gen-4 image generation and image-to-video capabilities.",
+    description:
+      "Gen-4 image generation, plus Gen-4.5 text-to-video and image-to-video.",
     docsUrl: "https://docs.dev.runwayml.com",
     apiKeysUrl: "https://app.runwayml.com/settings",
     envVar: "RUNWAYML_API_SECRET",

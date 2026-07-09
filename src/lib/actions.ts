@@ -76,44 +76,67 @@ export async function deleteProject(projectId: string) {
   redirect("/create/new");
 }
 
-export async function submitGeneration(
-  projectId: string,
-  content: string,
-  provider: ProviderName,
-  generationType: GenerationType,
-  modelId: string,
-  uploadFilePath?: string,
-  uploadMimeType?: string,
-  scaleFactor?: number,
-  upscaleParams?: Record<string, unknown>,
-  aspectRatio?: string
-) {
+interface ExecuteGenerationParams {
+  projectId: string;
+  content: string;
+  provider: ProviderName;
+  generationType: GenerationType;
+  modelId: string;
+  referenceImages: { base64: string; mimeType: string }[];
+  refImageUrls: string[];
+  referenceRoles?: string[];
+  metadata: Record<string, unknown>;
+  scaleFactor?: number;
+  upscaleParams?: Record<string, unknown>;
+  aspectRatio?: string;
+  numberOfImages?: number;
+}
+
+// Reference-image roles are expressed as prompt guidance — image models
+// (Nano Banana et al.) have no structured API field for them.
+const REFERENCE_ROLE_GUIDES: Record<string, string> = {
+  subject:
+    "a subject reference — keep this subject's identity and features consistent in the result",
+  style: "a style reference — apply its artistic style, not its content",
+  composition:
+    "a composition reference — follow its layout and framing, not its content or style",
+};
+
+function applyReferenceRoles(
+  prompt: string,
+  referenceRoles: string[] | undefined
+): string {
+  const roleLines = (referenceRoles ?? [])
+    .map((role, i) =>
+      REFERENCE_ROLE_GUIDES[role]
+        ? `Reference image ${i + 1} is ${REFERENCE_ROLE_GUIDES[role]}.`
+        : null
+    )
+    .filter((line): line is string => line !== null);
+  return roleLines.length > 0 ? `${prompt}\n\n${roleLines.join("\n")}` : prompt;
+}
+
+async function executeGeneration({
+  projectId,
+  content,
+  provider,
+  generationType,
+  modelId,
+  referenceImages,
+  refImageUrls,
+  referenceRoles,
+  metadata,
+  scaleFactor,
+  upscaleParams,
+  aspectRatio,
+  numberOfImages,
+}: ExecuteGenerationParams) {
   const providerInstance = getProvider(provider);
 
-  // Read uploaded image from disk if provided
-  let imageBase64: string | undefined;
-  let imageMimeType: string | undefined;
-  if (uploadFilePath && uploadMimeType) {
-    const fileBuffer = await readFile(uploadFilePath);
-    imageBase64 = fileBuffer.toString("base64");
-    imageMimeType = uploadMimeType;
-    await unlink(uploadFilePath).catch(() => {});
-  }
-
-  // Save the reference image to R2 if present
-  let refImageUrl: string | undefined;
-  if (imageBase64 && imageMimeType) {
-    const refAssetId = uuidv4();
-    const refBuffer = Buffer.from(imageBase64, "base64");
-    refImageUrl = await saveMedia(projectId, refAssetId, refBuffer, imageMimeType);
-  }
-
-  // Build metadata for the generation
-  const metadata: Record<string, unknown> = {};
-  if (scaleFactor !== undefined) metadata.scaleFactor = scaleFactor;
-  if (upscaleParams && Object.keys(upscaleParams).length > 0) {
-    Object.assign(metadata, upscaleParams);
-  }
+  // Primary reference: used by single-image flows (video, upscale)
+  const imageBase64 = referenceImages[0]?.base64;
+  const imageMimeType = referenceImages[0]?.mimeType;
+  const refImageUrl = refImageUrls[0];
 
   // Insert the generation row
   const generationId = uuidv4();
@@ -156,37 +179,68 @@ export async function submitGeneration(
 
   try {
     if (generationType === "text-to-image") {
-      const result = await providerInstance.generateImage(content, { modelId });
+      const effectivePrompt = applyReferenceRoles(content, referenceRoles);
+      const count = Math.min(Math.max(numberOfImages ?? 1, 1), 4);
 
-      const assetId = uuidv4();
-      const buffer = Buffer.from(result.base64, "base64");
-      const dims = getImageDimensions(buffer);
-      const filePath = await saveMedia(
-        projectId,
-        assetId,
-        buffer,
-        result.mimeType
+      const results = await Promise.allSettled(
+        Array.from({ length: count }, () =>
+          providerInstance.generateImage(effectivePrompt, {
+            modelId,
+            aspectRatio,
+            referenceImages:
+              referenceImages.length > 0 ? referenceImages : undefined,
+          })
+        )
       );
-      const thumbnailPath = await generateAndSaveThumbnail(buffer, projectId, assetId);
 
-      await db.insert(mediaAssets).values({
-        id: assetId,
-        generationId,
-        projectId,
-        type: "image",
-        provider,
-        model: modelId,
-        prompt: content,
-        filePath,
-        thumbnailPath,
-        mimeType: result.mimeType,
-        width: dims?.width ?? null,
-        height: dims?.height ?? null,
-      });
+      const images = results.flatMap((r) =>
+        r.status === "fulfilled" ? [r.value] : []
+      );
+      if (images.length === 0) {
+        const failure = results.find((r) => r.status === "rejected");
+        throw failure && failure.status === "rejected" && failure.reason instanceof Error
+          ? failure.reason
+          : new Error("Image generation failed");
+      }
+
+      for (const result of images) {
+        const assetId = uuidv4();
+        const buffer = Buffer.from(result.base64, "base64");
+        const dims = getImageDimensions(buffer);
+        const filePath = await saveMedia(
+          projectId,
+          assetId,
+          buffer,
+          result.mimeType
+        );
+        const thumbnailPath = await generateAndSaveThumbnail(buffer, projectId, assetId);
+
+        await db.insert(mediaAssets).values({
+          id: assetId,
+          generationId,
+          projectId,
+          type: "image",
+          provider,
+          model: modelId,
+          prompt: content,
+          filePath,
+          thumbnailPath,
+          mimeType: result.mimeType,
+          width: dims?.width ?? null,
+          height: dims?.height ?? null,
+        });
+      }
 
       await db
         .update(generationJobs)
-        .set({ status: "completed", updatedAt: new Date() })
+        .set({
+          status: "completed",
+          error:
+            images.length < count
+              ? `${count - images.length} of ${count} images failed`
+              : null,
+          updatedAt: new Date(),
+        })
         .where(eq(generationJobs.id, jobId));
     } else if (
       generationType === "text-to-video" ||
@@ -194,7 +248,9 @@ export async function submitGeneration(
     ) {
       let videoJob;
 
-      if (generationType === "image-to-video" && imageBase64 && imageMimeType) {
+      // Any video generation with an attached image uses it as the reference
+      // frame, regardless of whether the user was in text- or image-to-video mode
+      if (imageBase64 && imageMimeType) {
         videoJob = await providerInstance.imageToVideo(
           imageBase64,
           imageMimeType,
@@ -246,4 +302,125 @@ export async function submitGeneration(
 
   revalidatePath(`/create/${projectId}`);
   return { projectId, jobId };
+}
+
+export async function submitGeneration(
+  projectId: string,
+  content: string,
+  provider: ProviderName,
+  generationType: GenerationType,
+  modelId: string,
+  uploads?: { filePath: string; mimeType: string; role?: string }[],
+  scaleFactor?: number,
+  upscaleParams?: Record<string, unknown>,
+  aspectRatio?: string,
+  numberOfImages?: number
+) {
+  // Read uploaded reference images from disk and save them to R2
+  const referenceImages: { base64: string; mimeType: string }[] = [];
+  const refImageUrls: string[] = [];
+  const referenceRoles: string[] = [];
+  for (const upload of uploads ?? []) {
+    const fileBuffer = await readFile(upload.filePath);
+    await unlink(upload.filePath).catch(() => {});
+    referenceImages.push({
+      base64: fileBuffer.toString("base64"),
+      mimeType: upload.mimeType,
+    });
+    referenceRoles.push(upload.role ?? "reference");
+    const refAssetId = uuidv4();
+    refImageUrls.push(
+      await saveMedia(projectId, refAssetId, fileBuffer, upload.mimeType)
+    );
+  }
+
+  // Build metadata for the generation; settings are stored so re-runs can
+  // reproduce them exactly
+  const metadata: Record<string, unknown> = {};
+  if (scaleFactor !== undefined) metadata.scaleFactor = scaleFactor;
+  if (aspectRatio !== undefined) metadata.aspectRatio = aspectRatio;
+  if (numberOfImages !== undefined && numberOfImages > 1) {
+    metadata.numberOfImages = numberOfImages;
+  }
+  if (refImageUrls.length > 1) metadata.referenceImages = refImageUrls;
+  if (referenceRoles.some((role) => role !== "reference")) {
+    metadata.referenceRoles = referenceRoles;
+  }
+  if (upscaleParams && Object.keys(upscaleParams).length > 0) {
+    Object.assign(metadata, upscaleParams);
+  }
+
+  return executeGeneration({
+    projectId,
+    content,
+    provider,
+    generationType,
+    modelId,
+    referenceImages,
+    refImageUrls,
+    referenceRoles,
+    metadata,
+    scaleFactor,
+    upscaleParams,
+    aspectRatio,
+    numberOfImages,
+  });
+}
+
+export async function rerunGeneration(generationId: string) {
+  const original = await db.query.generations.findFirst({
+    where: eq(generations.id, generationId),
+  });
+  if (!original) {
+    throw new Error("Generation not found");
+  }
+
+  const metadata =
+    (original.metadata as Record<string, unknown> | null) ?? {};
+
+  // Re-download stored reference images so the provider gets the same inputs
+  const refImageUrls =
+    (metadata.referenceImages as string[] | undefined) ??
+    (original.referenceImagePath ? [original.referenceImagePath] : []);
+  const referenceImages: { base64: string; mimeType: string }[] = [];
+  for (const url of refImageUrls) {
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Failed to load reference image (${res.status})`);
+    }
+    const buffer = Buffer.from(await res.arrayBuffer());
+    referenceImages.push({
+      base64: buffer.toString("base64"),
+      mimeType:
+        res.headers.get("content-type") ??
+        original.referenceImageMimeType ??
+        "image/png",
+    });
+  }
+
+  // Everything in metadata besides these bookkeeping keys is upscale params
+  const {
+    scaleFactor,
+    aspectRatio,
+    numberOfImages,
+    referenceImages: _refs,
+    referenceRoles,
+    ...upscaleParams
+  } = metadata;
+
+  return executeGeneration({
+    projectId: original.projectId,
+    content: original.prompt,
+    provider: original.provider as ProviderName,
+    generationType: original.generationType as GenerationType,
+    modelId: original.model,
+    referenceImages,
+    refImageUrls,
+    referenceRoles: referenceRoles as string[] | undefined,
+    metadata,
+    scaleFactor: scaleFactor as number | undefined,
+    upscaleParams,
+    aspectRatio: aspectRatio as string | undefined,
+    numberOfImages: numberOfImages as number | undefined,
+  });
 }

@@ -48,13 +48,39 @@ export const openaiProvider: GenerationProvider = {
     prompt: string,
     options?: ImageGenerationOptions
   ): Promise<ImageResult> {
-    const result = await openai.images.generate({
-      model: options?.modelId ?? "gpt-image-1",
-      prompt,
-      size: mapAspectRatioToSize(options?.aspectRatio),
-      quality: (options?.quality as "low" | "medium" | "high") ?? "medium",
-      n: 1,
-    });
+    const model = options?.modelId ?? "gpt-image-1";
+    const size = mapAspectRatioToSize(options?.aspectRatio);
+    const quality = (options?.quality as "low" | "medium" | "high") ?? "medium";
+
+    let result;
+    const references = options?.referenceImages ?? [];
+    if (references.length > 0) {
+      // With reference images, GPT Image uses the edit endpoint
+      const files = references.map((ref, i) => {
+        const buffer = Buffer.from(ref.base64, "base64");
+        const ext = ref.mimeType.includes("png") ? "png" : "jpg";
+        return new File([buffer], `reference-${i}.${ext}`, {
+          type: ref.mimeType,
+        });
+      });
+
+      result = await openai.images.edit({
+        model,
+        image: files.length === 1 ? files[0] : files,
+        prompt,
+        size,
+        quality,
+        n: 1,
+      });
+    } else {
+      result = await openai.images.generate({
+        model,
+        prompt,
+        size,
+        quality,
+        n: 1,
+      });
+    }
 
     const imageData = result.data?.[0]?.b64_json;
     if (!imageData) {

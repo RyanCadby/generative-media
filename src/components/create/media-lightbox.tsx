@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { X, ChevronLeft, ChevronRight, Download, Copy, Check, SplitSquareHorizontal } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Download, Copy, Check, SplitSquareHorizontal, ImagePlus } from "lucide-react";
 import { BeforeAfterSlider } from "./before-after-slider";
 import {
   Dialog,
@@ -31,6 +31,7 @@ interface MediaLightboxProps {
   initialIndex: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onUseAsReference?: (asset: { id: string; filePath: string; mimeType: string }) => void;
 }
 
 function formatDate(date: Date) {
@@ -91,6 +92,7 @@ export function MediaLightbox({
   initialIndex,
   open,
   onOpenChange,
+  onUseAsReference,
 }: MediaLightboxProps) {
   const [index, setIndex] = useState(initialIndex);
   const [copied, setCopied] = useState(false);
@@ -482,7 +484,21 @@ export function MediaLightbox({
               <Separator />
 
               {/* Actions */}
-              <div>
+              <div className="space-y-2">
+                {asset.type === "image" && onUseAsReference && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2"
+                    onClick={() => {
+                      onUseAsReference(asset);
+                      onOpenChange(false);
+                    }}
+                  >
+                    <ImagePlus className="h-3.5 w-3.5" />
+                    Use as reference
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"

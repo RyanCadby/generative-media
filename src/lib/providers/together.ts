@@ -22,6 +22,13 @@ interface TogetherVideoResponse {
   error?: { code: string; message: string };
 }
 
+// Wan uses separate model IDs for text-to-video and image-to-video. When a
+// text-to-video Wan model receives a reference image, swap in its i2v twin.
+const WAN_T2V_TO_I2V: Record<string, string> = {
+  "Wan-AI/wan2.7-t2v": "Wan-AI/wan2.7-i2v",
+  "Wan-AI/Wan2.2-T2V-A14B": "Wan-AI/Wan2.2-I2V-A14B",
+};
+
 function isKlingModel(modelId?: string): boolean {
   return !!modelId && modelId.toLowerCase().includes("kling");
 }
@@ -120,7 +127,9 @@ export const togetherProvider: GenerationProvider = {
     prompt: string,
     options?: VideoGenerationOptions
   ): Promise<VideoJobResult> {
-    const { width, height } = mapDimensions(options?.aspectRatio, options?.modelId);
+    const requestedModel = options?.modelId ?? "Wan-AI/Wan2.2-I2V-A14B";
+    const modelId = WAN_T2V_TO_I2V[requestedModel] ?? requestedModel;
+    const { width, height } = mapDimensions(options?.aspectRatio, modelId);
 
     // Together API requires input_image as a publicly accessible URL
     const imageUrl =
@@ -134,7 +143,7 @@ export const togetherProvider: GenerationProvider = {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: options?.modelId ?? "Wan-AI/Wan2.2-I2V-A14B",
+        model: modelId,
         prompt,
         width,
         height,

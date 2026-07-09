@@ -56,6 +56,11 @@ function mapAspectRatioToVideoRatio(aspectRatio?: string): VideoRatio {
   }
 }
 
+// Gen-4.5 requires an integer duration between 2 and 10 seconds
+function clampGen45Duration(durationSeconds?: number): number {
+  return Math.min(10, Math.max(2, Math.round(durationSeconds ?? 5)));
+}
+
 export const runwayProvider: GenerationProvider = {
   name: "runway",
 
@@ -66,18 +71,39 @@ export const runwayProvider: GenerationProvider = {
     const ratio = mapAspectRatioToImageRatio(options?.aspectRatio);
     const modelId = options?.modelId ?? "gen4_image";
 
+    // Runway accepts at most 3 reference images
+    const references = (options?.referenceImages ?? []).slice(0, 3);
+    const referenceImages = await Promise.all(
+      references.map(async (ref, i) => {
+        const ext = ref.mimeType.includes("png") ? "png" : "jpg";
+        const buffer = Buffer.from(ref.base64, "base64");
+        const file = await toFile(buffer, `reference-${i}.${ext}`, {
+          type: ref.mimeType,
+        });
+        const upload = await client.uploads.createEphemeral({ file });
+        return { uri: upload.uri };
+      })
+    );
+
+    if (modelId === "gen4_image_turbo" && referenceImages.length === 0) {
+      throw new Error(
+        "Gen-4 Image Turbo requires a reference image — attach one or use Gen-4 Image"
+      );
+    }
+
     const task =
       modelId === "gen4_image_turbo"
         ? await client.textToImage.create({
             model: "gen4_image_turbo",
             promptText: prompt,
             ratio,
-            referenceImages: [],
+            referenceImages,
           })
         : await client.textToImage.create({
             model: "gen4_image",
             promptText: prompt,
             ratio,
+            ...(referenceImages.length > 0 ? { referenceImages } : {}),
           });
 
     const result = await client.tasks.retrieve(task.id).waitForTaskOutput();
@@ -100,12 +126,24 @@ export const runwayProvider: GenerationProvider = {
   },
 
   async generateVideo(
-    _prompt: string,
-    _options?: VideoGenerationOptions
+    prompt: string,
+    options?: VideoGenerationOptions
   ): Promise<VideoJobResult> {
-    throw new Error(
-      "Runway models do not support text-to-video. Use image-to-video instead."
-    );
+    const modelId = options?.modelId ?? "gen4.5";
+    if (modelId !== "gen4.5") {
+      throw new Error(
+        `Runway model ${modelId} does not support text-to-video. Use image-to-video instead.`
+      );
+    }
+
+    const task = await client.textToVideo.create({
+      model: "gen4.5",
+      promptText: prompt,
+      ratio: options?.aspectRatio === "9:16" ? "720:1280" : "1280:720",
+      duration: clampGen45Duration(options?.durationSeconds),
+    });
+
+    return { jobId: task.id };
   },
 
   async imageToVideo(
@@ -122,13 +160,23 @@ export const runwayProvider: GenerationProvider = {
 
     const upload = await client.uploads.createEphemeral({ file });
 
-    const task = await client.imageToVideo.create({
-      model: (options?.modelId ?? "gen4_turbo") as "gen4_turbo",
-      promptImage: upload.uri,
-      promptText: prompt,
-      ratio: mapAspectRatioToVideoRatio(options?.aspectRatio),
-      duration: options?.durationSeconds ?? 5,
-    });
+    const modelId = options?.modelId ?? "gen4_turbo";
+    const task =
+      modelId === "gen4.5"
+        ? await client.imageToVideo.create({
+            model: "gen4.5",
+            promptImage: upload.uri,
+            promptText: prompt,
+            ratio: mapAspectRatioToVideoRatio(options?.aspectRatio),
+            duration: clampGen45Duration(options?.durationSeconds),
+          })
+        : await client.imageToVideo.create({
+            model: modelId as "gen4_turbo",
+            promptImage: upload.uri,
+            promptText: prompt,
+            ratio: mapAspectRatioToVideoRatio(options?.aspectRatio),
+            duration: (options?.durationSeconds ?? 5) as 5 | 10,
+          });
 
     return { jobId: task.id };
   },

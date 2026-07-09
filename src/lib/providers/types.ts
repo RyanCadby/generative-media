@@ -6,6 +6,7 @@ export interface ImageGenerationOptions {
   aspectRatio?: string;
   quality?: string;
   numberOfImages?: number;
+  referenceImages?: { base64: string; mimeType: string }[];
 }
 
 export interface VideoGenerationOptions {

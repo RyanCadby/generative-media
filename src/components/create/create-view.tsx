@@ -36,10 +36,15 @@ export interface Generation {
   }[];
 }
 
+// How a reference image should be used by the model. "reference" means no
+// specific role — the model decides from the prompt.
+export type ImageRole = "reference" | "subject" | "style" | "composition";
+
 export interface UploadedImage {
   base64: string;
   mimeType: string;
   name: string;
+  role: ImageRole;
 }
 
 export interface ReuseSettings {
@@ -62,7 +67,7 @@ function processFile(file: File): Promise<UploadedImage> {
     reader.onload = () => {
       const result = reader.result as string;
       const base64 = result.split(",")[1];
-      resolve({ base64, mimeType: file.type, name: file.name });
+      resolve({ base64, mimeType: file.type, name: file.name, role: "reference" });
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
@@ -71,11 +76,14 @@ function processFile(file: File): Promise<UploadedImage> {
 
 export function CreateView({ projectId, generations: initialGenerations }: CreateViewProps) {
   const [generations, setGenerations] = useState<Generation[]>(initialGenerations);
-  const [isLoading, setIsLoading] = useState(false);
-  const [uploadedImage, setUploadedImage] = useState<UploadedImage | null>(null);
+  // In-flight submissions shown as loading rows, kept separate from server
+  // state so concurrent submissions can't wipe each other's placeholders
+  const [optimisticGenerations, setOptimisticGenerations] = useState<Generation[]>([]);
+  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
   const [reuseSettings, setReuseSettings] = useState<ReuseSettings | null>(null);
+  const [rerunRequest, setRerunRequest] = useState<Generation | null>(null);
   const [promptToLoad, setPromptToLoad] = useState<string | null>(null);
   const [jobProgress, setJobProgress] = useState<Record<string, number>>({});
 
@@ -87,11 +95,42 @@ export function CreateView({ projectId, generations: initialGenerations }: Creat
     setJobProgress((prev) => ({ ...prev, [jobId]: progress }));
   }, []);
 
-  const handleFileDrop = useCallback(async (file: File) => {
-    if (!file.type.startsWith("image/")) return;
-    const image = await processFile(file);
-    setUploadedImage(image);
+  const handleFileDrop = useCallback(async (files: File[]) => {
+    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+    if (imageFiles.length === 0) return;
+    const images = await Promise.all(imageFiles.map(processFile));
+    setUploadedImages((prev) => [...prev, ...images]);
   }, []);
+
+  // One-click: pull a previously generated image into the prompt as a reference
+  const handleUseAsReference = useCallback(
+    async (asset: { id: string; filePath: string; mimeType: string }) => {
+      const url = asset.filePath.startsWith("http")
+        ? `/api/media-proxy?url=${encodeURIComponent(asset.filePath)}`
+        : asset.filePath;
+      try {
+        const res = await fetch(url);
+        const blob = await res.blob();
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = (reader.result as string).split(",")[1];
+          setUploadedImages((prev) => [
+            ...prev,
+            {
+              base64,
+              mimeType: asset.mimeType,
+              name: `generated-${asset.id.slice(0, 8)}`,
+              role: "reference",
+            },
+          ]);
+        };
+        reader.readAsDataURL(blob);
+      } catch (error) {
+        console.error("Failed to load image as reference:", error);
+      }
+    },
+    []
+  );
 
   const onDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -127,9 +166,9 @@ export function CreateView({ projectId, generations: initialGenerations }: Creat
       setIsDragging(false);
       setDragCounter(0);
 
-      const file = e.dataTransfer.files?.[0];
-      if (file) {
-        handleFileDrop(file);
+      const files = Array.from(e.dataTransfer.files ?? []);
+      if (files.length > 0) {
+        handleFileDrop(files);
       }
     },
     [handleFileDrop]
@@ -161,19 +200,20 @@ export function CreateView({ projectId, generations: initialGenerations }: Creat
         projectId={projectId}
         generations={generations}
         onGenerationsUpdate={handleNewGenerations}
-        isLoading={isLoading}
-        setIsLoading={setIsLoading}
-        uploadedImage={uploadedImage}
-        onUploadedImageChange={setUploadedImage}
+        onOptimisticChange={setOptimisticGenerations}
+        uploadedImages={uploadedImages}
+        onUploadedImagesChange={setUploadedImages}
         reuseSettings={reuseSettings}
         onReuseSettingsConsumed={() => setReuseSettings(null)}
+        rerunRequest={rerunRequest}
+        onRerunRequestConsumed={() => setRerunRequest(null)}
         promptToLoad={promptToLoad}
         onPromptToLoadConsumed={() => setPromptToLoad(null)}
         onJobProgress={handleJobProgress}
       />
 
       {/* Generation feed */}
-      {generations.length === 0 ? (
+      {optimisticGenerations.length === 0 && generations.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4 max-w-md px-4">
             <h1 className="text-2xl font-semibold">Generative Media</h1>
@@ -187,7 +227,14 @@ export function CreateView({ projectId, generations: initialGenerations }: Creat
           </div>
         </div>
       ) : (
-        <GenerationFeed generations={generations} onReuse={setReuseSettings} onUsePrompt={setPromptToLoad} jobProgress={jobProgress} />
+        <GenerationFeed
+          generations={[...optimisticGenerations, ...generations]}
+          onReuse={setReuseSettings}
+          onRerun={setRerunRequest}
+          onUsePrompt={setPromptToLoad}
+          onUseAsReference={handleUseAsReference}
+          jobProgress={jobProgress}
+        />
       )}
     </div>
   );

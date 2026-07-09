@@ -13,32 +13,53 @@ export interface ModelDefinition {
 
 export const IMAGE_MODELS: ModelDefinition[] = [
   {
+    id: "gemini-3.1-flash-image",
+    name: "Nano Banana 2",
+    provider: "gemini",
+    generationType: "text-to-image",
+    description: "Versatile workhorse, up to 4K, strong text rendering",
+  },
+  {
+    id: "gemini-3-pro-image",
+    name: "Nano Banana Pro",
+    provider: "gemini",
+    generationType: "text-to-image",
+    description: "Highest quality, complex visual tasks",
+  },
+  {
+    id: "gemini-3.1-flash-lite-image",
+    name: "Nano Banana 2 Lite",
+    provider: "gemini",
+    generationType: "text-to-image",
+    description: "Fastest and cheapest, 1K resolution",
+  },
+  {
+    id: "gemini-2.5-flash-image",
+    name: "Nano Banana",
+    provider: "gemini",
+    generationType: "text-to-image",
+    description: "Original Nano Banana, superseded by Nano Banana 2",
+  },
+  {
     id: "imagen-4.0-generate-001",
     name: "Imagen 4.0",
     provider: "gemini",
     generationType: "text-to-image",
-    description: "Flagship image model, high quality",
+    description: "Deprecated, shuts down Aug 17, 2026",
   },
   {
     id: "imagen-4.0-fast-generate-001",
     name: "Imagen 4.0 Fast",
     provider: "gemini",
     generationType: "text-to-image",
-    description: "Optimized for speed",
+    description: "Deprecated, shuts down Aug 17, 2026",
   },
   {
     id: "imagen-4.0-ultra-generate-001",
     name: "Imagen 4.0 Ultra",
     provider: "gemini",
     generationType: "text-to-image",
-    description: "Highest prompt adherence",
-  },
-  {
-    id: "imagen-3.0-generate-002",
-    name: "Imagen 3.0",
-    provider: "gemini",
-    generationType: "text-to-image",
-    description: "Previous generation, still available",
+    description: "Deprecated, shuts down Aug 17, 2026",
   },
   {
     id: "gpt-image-2",
@@ -107,25 +128,39 @@ export const VIDEO_MODELS: ModelDefinition[] = [
     description: "High-efficiency, low-cost Veo 3.1 variant",
   },
   {
-    id: "veo-2.0-generate-001",
-    name: "Veo 2.0",
+    id: "gemini-omni-flash-preview",
+    name: "Gemini Omni Flash",
     provider: "gemini",
     generationType: "text-to-video",
-    description: "Previous generation, stable",
+    description: "Conversational video generation and editing, 16:9 or 9:16",
   },
   {
     id: "sora-2",
     name: "Sora 2",
     provider: "openai",
     generationType: "text-to-video",
-    description: "Fast video generation, up to 12s",
+    description: "Deprecated, API shuts down Sep 24, 2026",
   },
   {
     id: "sora-2-pro",
     name: "Sora 2 Pro",
     provider: "openai",
     generationType: "text-to-video",
-    description: "Higher quality, longer videos",
+    description: "Deprecated, API shuts down Sep 24, 2026",
+  },
+  {
+    id: "gen4.5",
+    name: "Gen-4.5",
+    provider: "runway",
+    generationType: "text-to-video",
+    description: "Runway's flagship video model, 2-10s",
+  },
+  {
+    id: "ByteDance/Seedance-2.0",
+    name: "Seedance 2.0",
+    provider: "together",
+    generationType: "text-to-video",
+    description: "Latest ByteDance model, top motion quality and prompt adherence",
   },
   {
     id: "ByteDance/Seedance-1.0-pro",
@@ -142,6 +177,13 @@ export const VIDEO_MODELS: ModelDefinition[] = [
     description: "Fast ByteDance video generation",
   },
   {
+    id: "Wan-AI/wan2.7-t2v",
+    name: "Wan 2.7 T2V",
+    provider: "together",
+    generationType: "text-to-video",
+    description: "Latest Wan model, first/last frame control",
+  },
+  {
     id: "Wan-AI/Wan2.2-T2V-A14B",
     name: "Wan 2.2 T2V",
     provider: "together",
@@ -150,9 +192,11 @@ export const VIDEO_MODELS: ModelDefinition[] = [
   },
 ];
 
-// Image-to-video includes all video models plus Runway image-to-video-only models
+// Image-to-video includes all video models plus Runway image-to-video-only models.
+// Wan text-to-video IDs are excluded — their image-to-video counterparts (-i2v)
+// are listed explicitly below.
 export const IMAGE_TO_VIDEO_MODELS: ModelDefinition[] = [
-  ...VIDEO_MODELS.map((m) => ({
+  ...VIDEO_MODELS.filter((m) => !/t2v/i.test(m.id)).map((m) => ({
     ...m,
     generationType: "image-to-video" as GenerationType,
   })),
@@ -183,6 +227,13 @@ export const IMAGE_TO_VIDEO_MODELS: ModelDefinition[] = [
     provider: "together",
     generationType: "image-to-video" as GenerationType,
     description: "Fast Kling video generation",
+  },
+  {
+    id: "Wan-AI/wan2.7-i2v",
+    name: "Wan 2.7 I2V",
+    provider: "together",
+    generationType: "image-to-video" as GenerationType,
+    description: "Latest Wan image-to-video",
   },
   {
     id: "Wan-AI/Wan2.2-I2V-A14B",
